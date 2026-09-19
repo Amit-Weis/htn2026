@@ -9,3 +9,4 @@
 *.unity merge=unityyamlmerge eol=lf
 *.prefab merge=unityyamlmerge eol=lf
 *.asset merge=unityyamlmerge eol=lf
+com.xreal.xr.tar.gz filter=lfs diff=lfs merge=lfs -text
