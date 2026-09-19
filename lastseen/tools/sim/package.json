@@ -1,0 +1,16 @@
+{
+  "name": "@lastseen/sim",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "roundtrip": "tsx src/roundtrip.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lastseen/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

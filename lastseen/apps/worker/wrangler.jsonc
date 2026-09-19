@@ -1,0 +1,58 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lastseen",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // PWA at /, dashboard at /dash (built into ./public by `pnpm build:web`).
+  // API + agent routes always hit the Worker first so assets never shadow them.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/agents/*", "/api/*"]
+  },
+
+  // One TrackerAgent (SQLite-backed Durable Object) per device id.
+  // Binding name == class name so the route is /agents/tracker-agent/<deviceId>.
+  "durable_objects": {
+    "bindings": [{ "name": "TrackerAgent", "class_name": "TrackerAgent" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TrackerAgent"] }],
+
+  "workflows": [
+    {
+      "name": "lastseen-ingest-placement",
+      "binding": "INGEST_WORKFLOW",
+      "class_name": "IngestPlacementWorkflow"
+    }
+  ],
+
+  // R2 needs a one-time enable in the dashboard (dash.cloudflare.com -> R2). Until then keyframe
+  // thumbnails fall back to SQLite. After enabling: `wrangler r2 bucket create lastseen-frames` and uncomment.
+  // "r2_buckets": [{ "binding": "FRAMES", "bucket_name": "lastseen-frames" }],
+
+  // wrangler vectorize create lastseen-objects --dimensions=768 --metric=cosine
+  // (bge-base-en-v1.5 => 768 dims). Per-device isolation uses the `namespace` query option.
+  "vectorize": [{ "binding": "VECTORS", "index_name": "lastseen-objects" }],
+
+  // Global OMNI spend guard. Namespace is auto-provisioned on first deploy, or create it with
+  // `wrangler kv namespace create BUDGET` and paste the id here.
+  "kv_namespaces": [{ "binding": "BUDGET" }],
+
+  "ai": { "binding": "AI" },
+
+  "vars": {
+    // 1 = canned OMNI responses (no credit spend). Set to 0 once OMNI_API_KEY is a secret.
+    "MOCK_OMNI": "1",
+    "OMNI_BASE_URL": "https://yibuapi.com/v1",
+    "OMNI_MODEL": "qwen3.5-omni-flash",
+    "OMNI_BUDGET_CAP_CAD": "30",
+    "RETENTION_HOURS": "24",
+    "CAMERA_HFOV_DEG": "70",
+    "STEP_LENGTH_M": "0.7",
+    "MAX_RANGE_M": "15",
+    "MIN_CONFIDENCE": "0.35"
+  }
+}

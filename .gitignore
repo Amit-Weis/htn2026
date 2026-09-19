@@ -107,3 +107,9 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Node dependencies
+node_modules/
+
+# Claude Code worktrees
+.claude/worktrees/

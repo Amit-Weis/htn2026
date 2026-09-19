@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `wrangler dev`. For deploys use `wrangler secret put <NAME>`.
+DEVICE_TOKEN=dev-token
+OMNI_API_KEY=
+# Overrides the wrangler.jsonc var locally
+MOCK_OMNI=1

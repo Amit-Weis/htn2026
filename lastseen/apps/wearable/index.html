@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <title>Lastseen</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; color: #fff; font-family: system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; }
+      button { font-size: 32px; padding: 16px 40px; border-radius: 12px; border: 0; background: #3f3; color: #000; }
+      #status { font-size: 32px; }
+    </style>
+  </head>
+  <body>
+    <div id="status">not connected</div>
+    <button id="start">Start</button>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
