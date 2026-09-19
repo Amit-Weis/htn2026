@@ -1,0 +1,16 @@
+name = "htn-locator"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[ai]
+binding = "AI"
+
+[vars]
+DETECT_MODEL = "@cf/facebook/detr-resnet-50"
+MIN_SCORE = "0.5"
+# PLACEHOLDER calibration for the Beam Pro back cameras: measure both, or pass ?fx=&baseline= per request.
+BASELINE_M = "0.06"
+HFOV_DEG = "65"
+# Set to "1" if the first camera in the side-by-side photo is actually the right one.
+STEREO_SWAP = "0"

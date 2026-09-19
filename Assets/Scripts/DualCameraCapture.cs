@@ -12,9 +12,13 @@ public class DualCameraCapture : MonoBehaviour
     const string JavaClass = "com.htn.dualcam.DualCamCapture";
 
     // Largest sensor-aspect YUV size under this many pixels is used. 12 MP is the sensor max.
-    public int maxPixels = 8000000;
+    // Kept small because the photo is uploaded to the Cloudflare locator (about 640x480 per eye).
+    public int maxPixels = 400000;
     // Sensor orientation is 90; change to 0/180/270 if the saved photo comes out sideways.
     public int rotationDegrees = 90;
+
+    // Raised with the saved path (e.g. "Pictures/DualCam/dualcam_123.jpg") after a successful capture.
+    public event System.Action<string> Captured;
 
     AndroidJavaObject capture;
     bool pending;
@@ -65,6 +69,13 @@ public class DualCameraCapture : MonoBehaviour
         pending = false;
         status = r;
         Debug.Log("[DualCam] " + r);
+
+        if (r.StartsWith("OK:"))
+        {
+            // "OK:Pictures/DualCam/x.jpg (WxH, cams a|b, skew ms)" -> just the path
+            int end = r.IndexOf(" (");
+            Captured?.Invoke(end < 0 ? r.Substring(3) : r.Substring(3, end - 3));
+        }
     }
 
     void OnGUI()
