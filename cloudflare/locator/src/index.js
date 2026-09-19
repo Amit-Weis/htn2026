@@ -1,5 +1,6 @@
 import jpeg from 'jpeg-js';
 import { matchDisparity } from './stereo.js';
+import { handleCommand } from './command.js';
 
 // Reject matches that are barely better than the runner-up (flat / repetitive texture).
 const MIN_MATCH_RATIO = 1.1;
@@ -26,6 +27,7 @@ function cropLeft(img, W) {
 // Response matches Depth/LocateResponse.cs in the Unity project.
 export default {
   async fetch(request, env) {
+    if (new URL(request.url).pathname === '/command') return handleCommand(request, env);
     if (request.method !== 'POST') return json({ found: false, error: 'POST a side-by-side JPEG' }, 405);
 
     const q = new URL(request.url).searchParams;
