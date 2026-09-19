@@ -49,6 +49,12 @@ Tests inject a fake backend and do not need MediaPipe or the TFLite model.
 
 Keep `DetectionResult`, bounding-box semantics, and target filtering. Replace OpenCV sources with CameraX/XREAL frames and use MediaPipe Tasks Vision for Android with the same `.tflite` asset. A production camera loop should use `LIVE_STREAM` mode, handle rotation/mirroring, and map image coordinates to display coordinates.
 
+The repository now includes the initial Unity/Android bridge under `Assets/Forgetmenot` and `Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib`. Prepare its model before an Android build with:
+
+```bash
+python download_model.py --android
+```
+
 ## Limitations
 
 - Detection is limited to 80 COCO labels; other items need a custom compatible TFLite model.
