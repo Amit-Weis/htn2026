@@ -31,8 +31,12 @@ namespace Forgetmenot
     [Serializable]
     public class DetectionFrameResult
     {
+        public long frame_id;
+        public long timestamp_ms;
         public int image_width;
         public int image_height;
+        public int rotation_degrees;
+        public bool mirrored;
         public DetectionResult[] detections = Array.Empty<DetectionResult>();
 
         public static DetectionFrameResult FromJson(string json)

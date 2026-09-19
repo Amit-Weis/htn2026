@@ -1,0 +1,16 @@
+{
+  "frame_id": 44,
+  "timestamp_ms": 123457000,
+  "image_width": 720,
+  "image_height": 1280,
+  "rotation_degrees": 0,
+  "mirrored": false,
+  "detections": [
+    {
+      "class_name": "cell phone",
+      "confidence": 0.88,
+      "bbox": { "x1": 240, "y1": 390, "x2": 470, "y2": 760 },
+      "center": { "x": 355, "y": 575 }
+    }
+  ]
+}

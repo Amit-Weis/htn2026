@@ -25,8 +25,23 @@ namespace Forgetmenot
 
         public DetectionFrameResult Detect(byte[] rgba, int width, int height, string targetClass)
         {
+            return Detect(rgba, width, height, targetClass, 0, 0, 0, false);
+        }
+
+        public DetectionFrameResult Detect(
+            byte[] rgba,
+            int width,
+            int height,
+            string targetClass,
+            long frameId,
+            long timestampMs,
+            int rotationDegrees,
+            bool mirrored)
+        {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            string json = m_Plugin.Call<string>("detectRgba", rgba, width, height, targetClass ?? "");
+            string json = m_Plugin.Call<string>(
+                "detectRgba", rgba, width, height, targetClass ?? "",
+                frameId, timestampMs, rotationDegrees, mirrored);
             return DetectionFrameResult.FromJson(json);
 #else
             return new DetectionFrameResult { image_width = width, image_height = height };

@@ -37,6 +37,18 @@ public final class MediaPipeDetector {
     }
 
     public String detectRgba(byte[] rgba, int width, int height, String targetClass) {
+        return detectRgba(rgba, width, height, targetClass, 0L, 0L, 0, false);
+    }
+
+    public String detectRgba(
+            byte[] rgba,
+            int width,
+            int height,
+            String targetClass,
+            long frameId,
+            long timestampMs,
+            int rotationDegrees,
+            boolean mirrored) {
         if (rgba == null || rgba.length != width * height * 4)
             throw new IllegalArgumentException("Expected width*height*4 RGBA bytes");
 
@@ -53,7 +65,9 @@ public final class MediaPipeDetector {
         MPImage image = new BitmapImageBuilder(bitmap).build();
         ObjectDetectorResult result = detector.detect(image);
         try {
-            return toJson(result, width, height, targetClass == null ? "" : targetClass.trim());
+            return toJson(
+                    result, width, height, targetClass == null ? "" : targetClass.trim(),
+                    frameId, timestampMs, rotationDegrees, mirrored);
         } finally {
             image.close();
             bitmap.recycle();
@@ -61,11 +75,22 @@ public final class MediaPipeDetector {
     }
 
     private static String toJson(
-            ObjectDetectorResult result, int width, int height, String targetClass) {
+            ObjectDetectorResult result,
+            int width,
+            int height,
+            String targetClass,
+            long frameId,
+            long timestampMs,
+            int rotationDegrees,
+            boolean mirrored) {
         try {
             JSONObject root = new JSONObject();
+            root.put("frame_id", frameId);
+            root.put("timestamp_ms", timestampMs);
             root.put("image_width", width);
             root.put("image_height", height);
+            root.put("rotation_degrees", rotationDegrees);
+            root.put("mirrored", mirrored);
             JSONArray output = new JSONArray();
 
             for (Detection detection : result.detections()) {
