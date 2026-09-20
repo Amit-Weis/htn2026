@@ -68,6 +68,29 @@ namespace Forgetmenot
         /// <summary>How long ago the card was last seen; infinity before the first sighting.</summary>
         public float SecondsSinceSeen => anchor != null && anchor.HasAnchor ? anchor.SecondsSinceSeen : float.PositiveInfinity;
 
+        /// <summary>The position is only a bearing (fixed placement): its distance and height are not the card's real ones.</summary>
+        public bool PositionIsApproximate => anchor != null && anchor.PositionIsApproximate;
+
+        /// <summary>The position was set by the first sighting and never moves (latched placement), so it can be much older than the last sighting.</summary>
+        public bool PositionIsFromFirstSighting => anchor != null && anchor.PositionIsLatched;
+
+        /// <summary>
+        /// How old the remembered position is. With a latched placement that is the time since the first sighting (later sightings do not
+        /// move it), otherwise the time since the last one. Infinity before the first sighting.
+        /// </summary>
+        public float SecondsSincePositionSet
+        {
+            get
+            {
+                if (anchor == null || !anchor.HasAnchor) return float.PositiveInfinity;
+                return anchor.PositionIsLatched ? Time.unscaledTime - positionSetAt : anchor.SecondsSinceSeen;
+            }
+        }
+
+        float positionSetAt = float.NegativeInfinity;
+        float forgottenSetAt;
+        bool hadAnchor;
+
         [Tooltip("After 'I found it' the old position is kept this long, so a wrong 'found' (someone else's words, a mishearing) can be undone by asking again.")]
         [SerializeField, Min(0f)] float keepForgottenSeconds = 600f;
 
@@ -88,6 +111,7 @@ namespace Forgetmenot
             {
                 forgottenPosition = anchor.AnchorPosition;
                 forgottenSeenAt = Time.unscaledTime - anchor.SecondsSinceSeen;
+                forgottenSetAt = positionSetAt;
                 forgottenAt = Time.unscaledTime;
             }
             anchor.ClearAnchor();
@@ -101,6 +125,8 @@ namespace Forgetmenot
         {
             if (!HasRecentlyForgotten) return false;
             anchor.Restore(forgottenPosition, forgottenSeenAt);
+            positionSetAt = forgottenSetAt;
+            hadAnchor = true; // not a new sighting: keep the original age
             forgottenAt = float.NegativeInfinity;
             return true;
         }
@@ -115,6 +141,10 @@ namespace Forgetmenot
         void Update()
         {
             if (anchor == null) return;
+
+            bool has = anchor.HasAnchor;
+            if (has && !hadAnchor) positionSetAt = Time.unscaledTime; // a position was just set (first sighting)
+            hadAnchor = has;
 
             bool requested = !requireRequest || Time.unscaledTime <= requestedUntil;
             bool shouldShow = requested && anchor.HasAnchor &&

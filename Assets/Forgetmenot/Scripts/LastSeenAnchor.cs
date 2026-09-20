@@ -118,6 +118,12 @@ namespace Forgetmenot
         public float LastDistanceMeters => lastDistance;
         public float SecondsSinceSeen => Time.unscaledTime - lastSeenTime;
 
+        /// <summary>True when the position is only a bearing: fixed placement puts it a set distance ahead of the head and never measures the real distance or height.</summary>
+        public bool PositionIsApproximate => useFixedPlacement;
+
+        /// <summary>True when the first placement is kept, so later sightings only refresh SecondsSinceSeen and never move the position.</summary>
+        public bool PositionIsLatched => useFixedPlacement && latchFirstPlacement;
+
         void Awake()
         {
             if (headCamera == null) headCamera = Camera.main;

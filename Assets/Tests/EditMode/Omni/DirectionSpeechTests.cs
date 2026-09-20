@@ -79,6 +79,15 @@ namespace Omni.Tests
         }
 
         [Test]
+        public void ABearingOnlySentenceMakesNoClaimAboutDistanceOrHeight()
+        {
+            Assert.AreEqual("It's ahead and to your left.", DirectionSpeech.DirectionSentence(-40));
+            Assert.AreEqual("It's directly behind you.", DirectionSpeech.DirectionSentence(180));
+            StringAssert.DoesNotContain("meter", DirectionSpeech.DirectionSentence(30));
+            StringAssert.DoesNotContain("low", DirectionSpeech.DirectionSentence(30));
+        }
+
+        [Test]
         public void WhereAndSentence()
         {
             Assert.AreEqual("ahead and to your left, about 3 meters away", DirectionSpeech.Where(-40, 0, 3.1));

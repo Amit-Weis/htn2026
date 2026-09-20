@@ -65,6 +65,15 @@ namespace Omni
             return string.Join(", ", parts);
         }
 
+        /// <summary>
+        /// "It's ahead and to your left." for a position that is only a bearing: when the distance and height are not measured
+        /// (fixed placement), claiming "about 3 meters away, down low" would be made up.
+        /// </summary>
+        public static string DirectionSentence(double angleDeg)
+        {
+            return "It's " + Direction(angleDeg) + ".";
+        }
+
         /// <summary>A whole sentence to speak: "It's ahead and to your left, about 3 meters away."</summary>
         public static string Sentence(double angleDeg, double elevationDeg, double distanceM)
         {

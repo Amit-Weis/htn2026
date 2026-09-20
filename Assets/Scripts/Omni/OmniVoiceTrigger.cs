@@ -306,9 +306,10 @@ namespace Omni
             else
             {
                 if (where != null) s.Append(where);
-                double age = reveal.SecondsSinceSeen;
+                // with a latched placement the position comes from the FIRST sighting and never moves, so that is the age to report
+                double age = reveal.SecondsSincePositionSet;
                 string ago = AgeSpeech.Ago(age);
-                if (ago != null && age >= 60) s.Append(" I last saw it ").Append(ago).Append('.');
+                if (ago != null && age >= 60) s.Append(reveal.PositionIsFromFirstSighting ? " I first spotted it " : " I last saw it ").Append(ago).Append('.');
                 if (restored) s.Append(" You said you'd found it, so this is where I last saw it.");
                 if (AgeSpeech.MayHaveMoved(age)) s.Append(" It may have moved.");
             }
@@ -335,6 +336,9 @@ namespace Omni
             Vector3 flatForward = Vector3.ProjectOnPlane(head.transform.forward, Vector3.up);
             // positive = to the right, as DirectionSpeech expects (Unity's signed angle around up)
             double angle = flatTo.sqrMagnitude < 1e-6f || flatForward.sqrMagnitude < 1e-6f ? 0.0 : Vector3.SignedAngle(flatForward, flatTo, Vector3.up);
+            // With fixed placement the position is a set distance ahead of the head at the first sighting, not where the card really
+            // is, so only the bearing is worth saying; the measured distance and height would be made up.
+            if (reveal.PositionIsApproximate) return DirectionSpeech.DirectionSentence(angle);
             double elevation = Mathf.Atan2(to.y, flatTo.magnitude) * Mathf.Rad2Deg;
             return DirectionSpeech.Sentence(angle, elevation, to.magnitude);
         }
