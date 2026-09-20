@@ -31,12 +31,12 @@ Legend: `AUTO` measured by the app · `HUMAN` needs a person · `TODO` not yet r
 <!-- AUTO:device -->
 | Field | Value |
 | --- | --- |
-| Model / Android / API | TODO |
-| WebView package + version | TODO |
-| CPU cores / ABIs | TODO |
-| Permissions at start | TODO |
-| Permissions after the request step | TODO |
-| Start-of-run thermal status / battery temp (°C) | TODO |
+| Model / Android / API | XREAL X4000 · Android 14 (API 34) |
+| WebView package + version | com.google.android.webview 126.0.6478.71 |
+| CPU cores / ABIs | 8 / arm64-v8a, armeabi-v7a, armeabi |
+| Permissions at start | `{"camera":true,"microphone":true,"notifications":true,"activityRecognition":true}` |
+| Permissions after the request step | `{"camera":"granted","microphone":"granted","notifications":"granted","activityRecognition":"granted"}` |
+| Start-of-run thermal status / battery temp (°C) | 0 / 26.0 |
 <!-- /AUTO:device -->
 
 ## 2. Sensors (AUTO, plus HUMAN for the step detector)
@@ -47,12 +47,12 @@ magnetometer (drift-prone but not disturbed by magnets); the accelerometer is th
 <!-- AUTO:sensors -->
 | Sensor | Present | Advertised max Hz | Achieved Hz (wall) | Achieved Hz (sensor clock) | Events | Max gap ms | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| rotation_vector | TODO | TODO | (not streamed) |  |  |  |  |
-| game_rotation_vector | TODO | TODO | (not streamed) |  |  |  |  |
-| step_detector | TODO | TODO | (not streamed) |  |  |  | HUMAN: walk during the 5 s test. |
-| accelerometer | TODO | TODO | (not streamed) |  |  |  |  |
-| gyroscope | TODO | TODO | (not streamed) |  |  |  |  |
-| magnetometer | TODO | TODO | (not streamed) |  |  |  |  |
+| rotation_vector | yes | 200 | 198.6 | 200.1 | 993 | 5 | continuous |
+| game_rotation_vector | yes | 200 | (not streamed) |  |  |  | continuous |
+| step_detector | yes | n/a (event-driven) | 0.0 | n/a | 0 | 0 | HUMAN: walk during the 5 s test. needs the wearer to WALK during the test; 0 events while still is expected |
+| accelerometer | yes | 400 | 399.6 | 400.3 | 1998 | 3 | continuous |
+| gyroscope | yes | 400 | (not streamed) |  |  |  | continuous |
+| magnetometer | yes | 100 | (not streamed) |  |  |  | continuous |
 <!-- /AUTO:sensors -->
 
 ## 3. Camera (AUTO)
@@ -60,20 +60,21 @@ magnetometer (drift-prone but not disturbed by magnets); the accelerometer is th
 <!-- AUTO:camera -->
 | Id | Facing | Focal (mm) | Sensor (mm) | FOV short side (°) | FOV long side (°) | Logical multi-cam | 640x480 / 1280x720 / 1920x1080 | YUV sizes (largest first) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| 0 | back | 2.1600000858306885 | 5.23 x 3.94 | 84.8 | 100.9 | no | yes / yes / yes | 4080x3072, 4000x3000, 3072x3072, 4080x2296, 3840x2160, 3280x2460 |
+| 1 | front | 2.760999917984009 | 3.66 x 2.74 | 52.8 | 67.0 | no | yes / yes / yes | 3264x2448, 3200x2400, 3264x1836, 2448x2448, 2592x1944, 2592x1940 |
 
 | Field | Value |
 | --- | --- |
-| **FOV, short side (portrait horizontal): use for `CAMERA_HFOV_DEG`** (first back camera; smaller if the stream crops the sensor) | TODO |
-| Multiple back cameras? (ids) | TODO |
-| Analysis stream size (requested 1280x720) | TODO |
-| **Steady-state fps** | TODO |
-| Frame interval mean / p95 / max (ms) | TODO |
-| Stream error, if any | TODO |
-| **640 px JPEG**: size (bytes) / dimensions | TODO |
-| 640 px JPEG: encode time, first (cold) / typical median (ms) | TODO |
-| Two cameras open at once? | TODO |
-| Camera2 concurrent id sets (API 30+) | TODO |
+| **FOV, short side (portrait horizontal): use for `CAMERA_HFOV_DEG`** (first back camera; smaller if the stream crops the sensor) | 84.8 |
+| Multiple back cameras? (ids) | no (0) |
+| Analysis stream size (requested 1280x720) | 1280 x 960 (rotation 90°) |
+| **Steady-state fps** | 29.9 |
+| Frame interval mean / p95 / max (ms) | 33.5 / 34.9 / 37.7 |
+| Stream error, if any | none |
+| **640 px JPEG**: size (bytes) / dimensions | 27058 / 640 x 853 |
+| 640 px JPEG: encode time, first (cold) / typical median (ms) | 44.1 / 29.7 |
+| Two cameras open at once? | yes — pair 0+1, {"0":"opened","1":"opened"} |
+| Camera2 concurrent id sets (API 30+) | `[["1"],["0","1"]]` |
 <!-- /AUTO:camera -->
 
 ## 4. Camera ownership / exclusivity (AUTO)
@@ -81,13 +82,13 @@ magnetometer (drift-prone but not disturbed by magnets); the accelerometer is th
 <!-- AUTO:exclusivity -->
 | Question | Result |
 | --- | --- |
-| WebView `getUserMedia({audio:true})` while the native camera streams (also confirms the mic prompt path) | TODO |
-| WebView `getUserMedia({video:true})` while the native camera streams | TODO |
-| Native stream keeps delivering after the WebView tried the camera? | TODO |
-| Native can open the camera while the WebView holds it? | TODO |
-| WebView permission requests seen (audio attempt / video attempt) | TODO |
-| WebView errors (audio / video) | TODO |
-| Verdict | TODO |
+| WebView `getUserMedia({audio:true})` while the native camera streams (also confirms the mic prompt path) | yes |
+| WebView `getUserMedia({video:true})` while the native camera streams | yes |
+| Native stream keeps delivering after the WebView tried the camera? | yes |
+| Native can open the camera while the WebView holds it? | yes |
+| WebView permission requests seen (audio attempt / video attempt) | ["android.webkit.resource.AUDIO_CAPTURE"] → granted / ["android.webkit.resource.VIDEO_CAPTURE"] → granted |
+| WebView errors (audio / video) | none / none |
+| Verdict | WebView CAN open the camera while native streams: ownership must be enforced in code (never open it in the WebView) |
 <!-- /AUTO:exclusivity -->
 
 ## 5. Foreground service (AUTO, plus HUMAN)
@@ -95,10 +96,10 @@ magnetometer (drift-prone but not disturbed by magnets); the accelerometer is th
 <!-- AUTO:foreground -->
 | Field | Result |
 | --- | --- |
-| Started on this Android version with camera + microphone types | TODO |
-| Error, if any (verbatim) | TODO |
-| Still running 1.5 s later | TODO |
-| Notifications enabled for the app | TODO |
+| Started on this Android version with camera + microphone types | yes (API 34) |
+| Error, if any (verbatim) | none |
+| Still running 1.5 s later | yes |
+| Notifications enabled for the app | yes |
 <!-- /AUTO:foreground -->
 
 | Check | Result |
@@ -153,9 +154,9 @@ Android's own view of the displays (**AUTO**, from the last `pnpm android:probe`
 <!-- AUTO:display -->
 | Display id | Name | Size (px) | Hz | dpi | Rotation | Presentation-capable |
 | --- | --- | --- | --- | --- | --- | --- |
-| TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| 0 | Built-in Screen | 1080 x 2400 | 60 | 480 | 0 | no |
 
-Display count: TODO (more than 1 means the glasses appear as a separate display; 1 means a mirror). Presentation display ids: TODO. Activity window: TODO.
+Display count: 1 (more than 1 means the glasses appear as a separate display; 1 means a mirror). Presentation display ids: []. Activity window: 1080 x 2400 px, portrait.
 <!-- /AUTO:display -->
 
 | Question (HUMAN) | Portrait | Landscape |

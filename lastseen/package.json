@@ -13,7 +13,7 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "build:web": "pnpm --filter @lastseen/wearable build && pnpm --filter @lastseen/dashboard build",
     "dev": "pnpm build:web && pnpm --filter @lastseen/worker dev",
-    "deploy": "pnpm build:web && pnpm --filter @lastseen/worker deploy",
+    "deploy": "pnpm build:web && pnpm --filter @lastseen/worker run deploy",
     "sim": "tsx tools/sim/src/run.ts",
     "probe:omni": "tsx scripts/probe-omni.ts",
     "sim:local": "pnpm build:web && tsx tools/sim/src/run.ts --spawn --all",

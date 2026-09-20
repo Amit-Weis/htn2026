@@ -19,7 +19,7 @@ should not be deployed.
 
 ## Setup
 
-1. **Worker**: `pnpm deploy` from `lastseen/` (needs the secrets from the README: `DEVICE_TOKEN`, and `OMNI_API_KEY` once you have one). Until then the Worker runs
+1. **Worker**: `pnpm run deploy` from `lastseen/` (needs the secrets from the README: `DEVICE_TOKEN`, and `OMNI_API_KEY` once you have one). Until then the Worker runs
    the mock (`MOCK_OMNI=1`): the whole path works, the answers are canned.
 2. **Client config**: copy `Assets/Resources/lastseen.example.json` to `Assets/Resources/lastseen.json` (git-ignored) and fill in `workerUrl`, `token`, `deviceId`.
    The token is baked into the APK: fine for your own debug build, not for distribution. With no file the app shows `CONFIG: ...` on screen and does nothing else.

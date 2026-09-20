@@ -32,6 +32,7 @@ export function createOmni(env: Env): OmniClient {
       flatPerCall: DEFAULT_PRICING.flatPerCall,
     },
     audioStyle: env.OMNI_AUDIO_STYLE === "raw" ? "raw" : "datauri",
+    voice: env.OMNI_VOICE || undefined,
     capabilities: {
       audioOutput: env.OMNI_AUDIO_OUTPUT !== "0",
     },

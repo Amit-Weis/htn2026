@@ -102,7 +102,9 @@ class ProbeRunner(private val activity: ProbeActivity, private val ui: (String) 
         out.put("jpeg640", samples)
         s.stop()
         Thread.sleep(700) // let unbindAll finish before Camera2 opens cameras directly
-        return out.put("concurrent", CameraProbe.openTwoAtOnce(ctx))
+        out.put("concurrent", CameraProbe.openTwoAtOnce(ctx))
+        Thread.sleep(500)
+        return out.put("hiddenCameras", CameraProbe.openHidden(ctx))
     }
 
     // ------------------------------------------------------------------ 6c exclusivity

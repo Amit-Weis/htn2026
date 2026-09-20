@@ -276,4 +276,50 @@ object CameraProbe {
         }
         return out
     }
+
+    /**
+     * The Beam Pro's camera service lists more cameras than `cameraIdList` shows apps (ids 2 and 3; 3 is the back logical
+     * multi-camera made of physical 0 + 2, the stereo pair). Asks for their characteristics and tries to open them by id anyway,
+     * recording exactly what Android says. Never throws.
+     */
+    @SuppressLint("MissingPermission") // CAMERA is checked first, and everything is inside try/catch
+    fun openHidden(ctx: Context): JSObject {
+        val out = JSObject()
+        try {
+            if (!hasCameraPermission(ctx)) return out.put("attempted", false).put("note", "CAMERA permission not granted")
+            val mgr = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            out.put("listedIds", JSArray(mgr.cameraIdList.toList()))
+            val thread = HandlerThread("probe-hidden").also { it.start() }
+            val handler = Handler(thread.looper)
+            for (id in listOf("2", "3")) {
+                val r = JSObject()
+                try {
+                    val c = mgr.getCameraCharacteristics(id)
+                    r.put("characteristics", "ok")
+                    if (Build.VERSION.SDK_INT >= 28) r.put("physicalCameraIds", JSArray(c.physicalCameraIds.toList()))
+                } catch (t: Throwable) {
+                    r.put("characteristics", "threw $t")
+                }
+                val latch = CountDownLatch(1)
+                var opened: CameraDevice? = null
+                try {
+                    mgr.openCamera(id, object : CameraDevice.StateCallback() {
+                        override fun onOpened(d: CameraDevice) { opened = d; r.put("open", "opened"); latch.countDown() }
+                        override fun onDisconnected(d: CameraDevice) { r.put("open", "disconnected"); d.close(); latch.countDown() }
+                        override fun onError(d: CameraDevice, e: Int) { r.put("open", "error code $e"); d.close(); latch.countDown() }
+                    }, handler)
+                    if (!latch.await(5, TimeUnit.SECONDS)) r.put("open", "timed out")
+                } catch (t: Throwable) {
+                    r.put("open", "threw $t")
+                }
+                runCatching { opened?.close() }
+                android.util.Log.i("LastseenProbe", "hidden camera $id: $r")
+                out.put(id, r)
+            }
+            thread.quitSafely()
+        } catch (t: Throwable) {
+            out.put("error", t.toString())
+        }
+        return out
+    }
 }

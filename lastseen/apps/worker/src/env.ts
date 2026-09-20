@@ -44,6 +44,8 @@ export interface Env {
   OMNI_PRICE_OUT_PER_M?: string;
   OMNI_AUDIO_STYLE?: string;
   OMNI_AUDIO_OUTPUT?: string;
+  /** speech voice name; the default "Cherry" is rejected by qwen3.5-omni-plus, which accepts e.g. "Ethan" */
+  OMNI_VOICE?: string;
 }
 
 export function num(v: string | undefined, fallback: number): number {
