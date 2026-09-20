@@ -109,3 +109,6 @@ InitTestScene*.unity*
 /[Aa]ssets/[Ss]ceneDependencyCache*
 # Downloaded ML model copied into the Android library by forgetmenot_cv/download_model.py.
 Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/src/main/assets/*.tflite
+Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/src/main/assets/*.onnx
+!Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/src/main/assets/hacker_card.onnx
+Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/build/
