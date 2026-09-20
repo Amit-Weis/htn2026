@@ -2,7 +2,7 @@
 
 Desktop test harness for MediaPipe Object Detector using Google's int8 EfficientDet-Lite0 model. It detects COCO objects in a BGR NumPy frame and returns platform-neutral dataclasses containing class, confidence, bounding box, and center.
 
-There is no depth estimation, tracking, ReID, segmentation, or XREAL integration in this milestone.
+Optional YOLO26 monocular depth adds an approximate distance in meters to each detection.
 
 ## Setup
 
@@ -32,6 +32,61 @@ python app.py --webcam 0 --target "cell phone"
 ```
 
 Press `Q` to quit. The desktop harness uses synchronous image inference frame-by-frame for one source-independent `detect(frame)` API.
+
+Enable distance estimates (the checkpoint downloads on first use):
+
+```bash
+python app.py --webcam 0 --model yolo26n.pt \
+  --depth-model yolo26n-depth.pt
+```
+
+The JSON includes `distance_m`. In the preview, the object label is on the top-left
+edge of its box and the estimated meters appear in a separate badge on the opposite
+bottom-right edge. The value is the median depth from the inner half of the detection
+box, which avoids most background pixels.
+
+For better absolute distance on the actual camera, photograph a centered object at
+three or more measured distances spanning the intended range, then fit calibration:
+
+```bash
+python training/calibrate_depth.py \
+  --sample calibration/card_050cm.jpg=0.50 \
+  --sample calibration/card_100cm.jpg=1.00 \
+  --sample calibration/card_200cm.jpg=2.00
+
+python app.py --webcam 0 --model yolo26n.pt \
+  --depth-model yolo26n-depth.pt \
+  --depth-calibration models/depth_calibration.json
+```
+
+Use at least 5–10 measurements for a serious calibration. Detection box labels
+cannot train a depth model: full depth training requires an RGB image and measured
+depth map for every frame. Calibration is the practical route for this prototype.
+
+### Recommended MVP: known-size card distance
+
+For a steadier hacker-card demo, skip the depth model. Hold one card face-on at
+exactly 1 meter and press `C` while it is the only detected target:
+
+```bash
+python app.py --webcam 0 \
+  --model training/runs/hacker_card-2/weights/best.pt \
+  --custom-label hacker_card --target hacker_card \
+  --calibrate-at 1.0
+```
+
+This saves `models/hacker_card_distance.json` and begins showing meters immediately.
+For later runs, load the saved calibration:
+
+```bash
+python app.py --webcam 0 \
+  --model training/runs/hacker_card-2/weights/best.pt \
+  --custom-label hacker_card --target hacker_card \
+  --size-calibration models/hacker_card_distance.json
+```
+
+This route requires no depth model. It assumes the card is approximately face-on
+and depends on a tight, stable detection box.
 
 To show regular COCO objects and the custom hacker card in the same preview:
 
@@ -116,5 +171,6 @@ python download_model.py --android
 
 - Detection is limited to 80 COCO labels; other items need a custom compatible TFLite model.
 - Small, occluded, or unusual objects may be missed by EfficientDet-Lite0.
+- Monocular distance is approximate and camera/scene dependent; it is not a safety sensor.
 - There are no persistent IDs or world/AR coordinates.
 - The desktop webcam loop is synchronous, so inference can reduce preview frame rate.
