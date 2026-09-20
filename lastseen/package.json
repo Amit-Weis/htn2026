@@ -18,6 +18,8 @@
     "probe:omni": "tsx scripts/probe-omni.ts",
     "sim:local": "pnpm build:web && tsx tools/sim/src/run.ts --spawn --all",
     "validate:native": "tsx scripts/validate-native.ts",
+    "vectors": "tsx scripts/gen-vectors.ts",
+    "unity:test": "node scripts/unity-check.mjs",
     "check:all": "pnpm check && pnpm sim:local",
     "android:doctor": "node scripts/android.mjs doctor",
     "android:build": "node scripts/android.mjs build",

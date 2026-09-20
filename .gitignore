@@ -116,3 +116,7 @@ node_modules/
 
 # Downloaded ML model copied into the Android library by forgetmenot_cv/download_model.py.
 Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/src/main/assets/*.tflite
+
+# Lastseen client settings (worker URL + device token). Copy Assets/Resources/lastseen.example.json to lastseen.json.
+Assets/Resources/lastseen.json
+Assets/Resources/lastseen.json.meta

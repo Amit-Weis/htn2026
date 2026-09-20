@@ -16,6 +16,8 @@ public class DualCameraCapture : MonoBehaviour
     public int maxPixels = 400000;
     // Sensor orientation is 90; change to 0/180/270 if the saved photo comes out sideways.
     public int rotationDegrees = 90;
+    // The controller that owns the UI (LastseenApp.LastseenController) turns this off; on its own the component keeps its debug button.
+    public bool showDebugGui = true;
 
     // Raised with the saved path (e.g. "Pictures/DualCam/dualcam_123.jpg") after a successful capture.
     public event System.Action<string> Captured;
@@ -80,6 +82,7 @@ public class DualCameraCapture : MonoBehaviour
 
     void OnGUI()
     {
+        if (!showDebugGui) return;
         int h = Screen.height / 12;
         var button = new GUIStyle(GUI.skin.button) { fontSize = h / 2 };
         var label = new GUIStyle(GUI.skin.label) { fontSize = h / 3, wordWrap = true };

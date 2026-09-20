@@ -1,0 +1,10 @@
+{
+  "workerUrl": "https://lastseen.<your-subdomain>.workers.dev",
+  "token": "<the DEVICE_TOKEN secret you set with `wrangler secret put DEVICE_TOKEN`>",
+  "deviceId": "beam-1",
+  "hfovDeg": 65,
+  "baselineM": 0.06,
+  "stereoSwap": false,
+  "holdSeconds": 3.5,
+  "stepLengthM": 0.7
+}
