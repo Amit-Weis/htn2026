@@ -12,7 +12,7 @@ namespace Forgetmenot
     /// of ARCameraManager. Emits the same DetectionFrameResult contract, so
     /// HackerCardHud and FixedDepthArrowController work against it unchanged.
     ///
-    /// Frames are downscaled before inference. The model letterboxes to 640x640
+    /// Frames are downscaled before inference. The model letterboxes to 320x320
     /// internally, so sending full-resolution pixels costs readback time and buys
     /// nothing. Detections come back in downscaled coordinates and image_width /
     /// image_height report that same space, so normalized consumers stay correct.
@@ -28,8 +28,8 @@ namespace Forgetmenot
         [SerializeField] string targetClass = "hacker_card";
         [SerializeField, Range(0.05f, 1f)] float scoreThreshold = 0.3f;
         [SerializeField, Min(0.05f)] float inferenceIntervalSeconds = 0.2f;
-        [Tooltip("Longest edge sent to the model. 640 matches its input size.")]
-        [SerializeField, Min(128)] int inferenceMaxEdge = 640;
+        [Tooltip("Longest edge sent to the model. 320 matches its input size.")]
+        [SerializeField, Min(128)] int inferenceMaxEdge = 320;
 
         [Header("Output")]
         [SerializeField] RawImage cameraPreview;
