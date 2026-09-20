@@ -11,6 +11,8 @@ namespace Omni
         public string Heard = "";
         /// <summary>a target id such as "hacker_card" when the wearer asked to be pointed to it, otherwise null</summary>
         public string Wants;
+        /// <summary>a target id when the wearer says they found it ("I found my hacker tag"): the arrow can go away; otherwise null</summary>
+        public string Found;
         public string Say = "";
         /// <summary>"omni", or "keywords" when OMNI could not answer and the typed words decided</summary>
         public string Source = "";
@@ -24,8 +26,8 @@ namespace Omni
     /// </summary>
     public static class OmniIntentClient
     {
-        /// <summary>Calls <paramref name="done"/> with the reply, or with null and the reason.</summary>
-        public static IEnumerator Ask(OmniConfig config, string text, byte[] wav, Action<IntentReply, string> done)
+        /// <summary>Calls <paramref name="done"/> with the reply, or with null and what went wrong.</summary>
+        public static IEnumerator Ask(OmniConfig config, string text, byte[] wav, Action<IntentReply, Failure> done)
         {
             var body = new JObject();
             if (!string.IsNullOrEmpty(text)) body["text"] = text;
@@ -47,11 +49,11 @@ namespace Omni
                 string reply = req.downloadHandler != null ? req.downloadHandler.text : "";
                 if (req.result != UnityWebRequest.Result.Success)
                 {
-                    done(null, Describe(req, reply));
+                    done(null, OmniErrors.Classify(req.responseCode, req.error, reply));
                     yield break;
                 }
                 IntentReply parsed = Parse(reply);
-                if (parsed == null) done(null, "the Worker's reply was not understood: " + Trim(reply));
+                if (parsed == null) done(null, OmniErrors.BadReply(reply));
                 else done(parsed, null);
             }
         }
@@ -66,6 +68,7 @@ namespace Omni
                 {
                     Heard = (string)o["heard"] ?? "",
                     Wants = string.IsNullOrEmpty((string)o["wants"]) ? null : (string)o["wants"],
+                    Found = string.IsNullOrEmpty((string)o["found"]) ? null : (string)o["found"],
                     Say = (string)o["say"] ?? "",
                     Source = (string)o["source"] ?? "",
                     Note = (string)o["note"] ?? "",
@@ -75,18 +78,6 @@ namespace Omni
             {
                 return null;
             }
-        }
-
-        static string Describe(UnityWebRequest req, string body)
-        {
-            if (req.responseCode == 401) return "the Worker rejected the token (check token in lastseen.json)";
-            if (req.responseCode > 0) return "HTTP " + req.responseCode + ": " + Trim(body);
-            return "no connection (" + req.error + ")";
-        }
-
-        static string Trim(string s)
-        {
-            return string.IsNullOrEmpty(s) ? "" : (s.Length > 160 ? s.Substring(0, 160) + "..." : s);
         }
     }
 }

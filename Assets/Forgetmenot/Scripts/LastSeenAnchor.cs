@@ -297,6 +297,22 @@ namespace Forgetmenot
                 totem.gameObject.SetActive(false);
         }
 
+        /// <summary>
+        /// Puts a cleared sighting back: where it was and when it was seen (Time.unscaledTime then). Used by RevealOnFirstSighting when the
+        /// wearer said "I found it" and then asks for it again, so a wrong "found" can be undone.
+        /// </summary>
+        public void Restore(Vector3 position, float seenAtUnscaledTime)
+        {
+            anchorPosition = position;
+            hasAnchor = true;
+            lastSeenTime = seenAtUnscaledTime;
+            if (totem != null)
+            {
+                totem.position = anchorPosition;
+                totem.gameObject.SetActive(true);
+            }
+        }
+
         void OnDrawGizmosSelected()
         {
             if (!hasAnchor) return;

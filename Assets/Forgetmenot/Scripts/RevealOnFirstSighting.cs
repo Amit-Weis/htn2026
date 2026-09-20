@@ -46,6 +46,13 @@ namespace Forgetmenot
         /// <summary>The card has been seen at least once, so there is somewhere to point.</summary>
         public bool HasAnchor => anchor != null && anchor.HasAnchor;
 
+        /// <summary>Where the card was last seen (world position). False until it has been seen once.</summary>
+        public bool TryGetAnchorPosition(out Vector3 position)
+        {
+            position = anchor != null ? anchor.AnchorPosition : Vector3.zero;
+            return anchor != null && anchor.HasAnchor;
+        }
+
         /// <summary>The wearer asked for the card: show the objects for showForSeconds (once the card has been seen).</summary>
         public void Request()
         {
@@ -56,6 +63,46 @@ namespace Forgetmenot
         public void Cancel()
         {
             requestedUntil = float.NegativeInfinity;
+        }
+
+        /// <summary>How long ago the card was last seen; infinity before the first sighting.</summary>
+        public float SecondsSinceSeen => anchor != null && anchor.HasAnchor ? anchor.SecondsSinceSeen : float.PositiveInfinity;
+
+        [Tooltip("After 'I found it' the old position is kept this long, so a wrong 'found' (someone else's words, a mishearing) can be undone by asking again.")]
+        [SerializeField, Min(0f)] float keepForgottenSeconds = 600f;
+
+        Vector3 forgottenPosition;
+        float forgottenSeenAt;
+        float forgottenAt = float.NegativeInfinity;
+
+        /// <summary>
+        /// The wearer has the card: hide the objects and clear where it was (the position, and the totem marker there), so the next
+        /// request does not point at a stale spot. The next sighting by the detector remembers it again, wherever it is then.
+        /// The cleared position is kept for keepForgottenSeconds, see <see cref="RestoreForgotten"/>.
+        /// </summary>
+        public void Forget()
+        {
+            Cancel();
+            if (anchor == null) return;
+            if (anchor.HasAnchor)
+            {
+                forgottenPosition = anchor.AnchorPosition;
+                forgottenSeenAt = Time.unscaledTime - anchor.SecondsSinceSeen;
+                forgottenAt = Time.unscaledTime;
+            }
+            anchor.ClearAnchor();
+        }
+
+        /// <summary>True when a position was cleared by Forget() less than keepForgottenSeconds ago and nothing has been seen since.</summary>
+        public bool HasRecentlyForgotten => anchor != null && !anchor.HasAnchor && Time.unscaledTime - forgottenAt <= keepForgottenSeconds;
+
+        /// <summary>Undo a Forget(): puts the cleared position back (with its real age). False when there is nothing recent to restore.</summary>
+        public bool RestoreForgotten()
+        {
+            if (!HasRecentlyForgotten) return false;
+            anchor.Restore(forgottenPosition, forgottenSeenAt);
+            forgottenAt = float.NegativeInfinity;
+            return true;
         }
 
         void Awake()
