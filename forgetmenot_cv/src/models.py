@@ -30,6 +30,7 @@ class DetectionResult:
     confidence: float
     bbox: BoundingBox
     center: Point
+    distance_m: float | None = None
 
     @classmethod
     def from_bbox(
