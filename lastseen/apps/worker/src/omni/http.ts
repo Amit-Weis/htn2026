@@ -1,9 +1,9 @@
-import { AgentStepSchema, PlacementResultSchema, VerifyResultSchema } from "@lastseen/shared";
-import type { AgentStep, PlacementResult, VerifyResult } from "@lastseen/shared";
+import { AgentStepSchema, CropDescriptionSchema, PlacementResultSchema, VerifyResultSchema } from "@lastseen/shared";
+import type { AgentStep, CropDescription, PlacementResult, VerifyResult } from "@lastseen/shared";
 import type { ZodType } from "zod";
 import { BudgetGuard, DEFAULT_PRICING, estimateCad } from "./budget";
 import type { Pricing } from "./budget";
-import { PLACEMENT_SYSTEM, STEP_SYSTEM, VERIFY_SYSTEM, renderHistory } from "./prompts";
+import { CROP_SYSTEM, PLACEMENT_SYSTEM, STEP_SYSTEM, VERIFY_SYSTEM, renderHistory } from "./prompts";
 import { BudgetExceededError } from "./types";
 import type { AudioClip, Frame, OmniCapabilities, OmniClient, OmniResult, PlacementCtx, UtteranceCtx } from "./types";
 
@@ -182,8 +182,16 @@ export class HttpOmni implements OmniClient {
       { type: "text", text: `Known zones: ${ctx.knownZones.join(", ") || "(none yet)"}. ${picked.length} keyframes, oldest first:` },
       ...picked.map((f) => this.imagePart(f)),
     ];
+    if (ctx.detections?.length) {
+      const list = ctx.detections.map((d, i) => `#${i} ${d.label} ${d.score.toFixed(2)} [${d.bbox.map((n) => n.toFixed(2)).join(",")}]`).join("\n");
+      parts.push({ type: "text", text: `DETECTOR BOXES (last frame):\n${list}` });
+    }
     if (ctx.narration && this.capabilities.audioInput) parts.push(this.audioPart(ctx.narration));
     return this.jsonCall(PLACEMENT_SYSTEM, parts, PlacementResultSchema);
+  }
+
+  describeCrop(crop: Frame, hint: { label: string }): Promise<OmniResult<CropDescription>> {
+    return this.jsonCall(CROP_SYSTEM, [{ type: "text", text: `Detector guess: ${hint.label}` }, this.imagePart(crop)], CropDescriptionSchema);
   }
 
   understandUtterance(audio: AudioClip | null, ctx: UtteranceCtx): Promise<OmniResult<AgentStep>> {
@@ -226,6 +234,7 @@ export class HttpOmni implements OmniClient {
 }
 
 function pickEven<T>(xs: T[], n: number): T[] {
+  if (n <= 1) return xs.length ? [xs[xs.length - 1]!] : [];
   return Array.from({ length: n }, (_, i) => xs[Math.round((i * (xs.length - 1)) / (n - 1))]!);
 }
 

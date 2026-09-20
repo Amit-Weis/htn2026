@@ -43,6 +43,10 @@
 
   "ai": { "binding": "AI" },
 
+  // Used to crop the chosen object from the full-res still before asking OMNI to describe it.
+  // Local `wrangler dev` only supports a subset of transforms, so cropping is skipped there.
+  "images": { "binding": "IMAGES" },
+
   "vars": {
     // 1 = canned OMNI responses (no credit spend). Set to 0 once OMNI_API_KEY is a secret.
     "MOCK_OMNI": "1",
@@ -53,6 +57,12 @@
     "CAMERA_HFOV_DEG": "70",
     "STEP_LENGTH_M": "0.7",
     "MAX_RANGE_M": "15",
-    "MIN_CONFIDENCE": "0.35"
+    "MIN_CONFIDENCE": "0.35",
+    "USE_VECTORIZE": "1",
+    "CANDIDATE_COOLDOWN_MS": "4000",
+    "MAX_OMNI_PER_MIN": "6",
+    "DEDUPE_WINDOW": "10",
+    "WALK_FRACTION": "0.5",
+    "CROP_MIN_PIXELS": "1000000"
   }
 }

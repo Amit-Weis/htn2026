@@ -16,6 +16,7 @@ Tools (args in braces):
 - mark_moved {"objectId": string}: the wearer says the object was moved
 - forget {"objectId": string | "all"}: delete an object or everything ("forget everything")
 - clarify {"question": string}: ask a short question when several candidates fit ("the Phillips or the flathead?")
+- recenter {}: the wearer says their view is off ("recenter", "straight ahead"); recalibrates the glasses heading
 
 Rules:
 - For "where is / find my X" call find_object first, then guide_to for the best match, then a final answer that names the object, where it is and how long ago it was seen.
@@ -27,9 +28,10 @@ Rules:
 export const PLACEMENT_SYSTEM = `You watch a short sequence of camera keyframes (oldest first) from a chest-mounted camera and report what the wearer put down or picked up. The LAST frame is the reference for bounding boxes.
 
 Reply with ONLY one JSON object:
-{"events":[{"kind":"placed"|"picked_up","label":"short noun phrase","description":"one sentence","distinguishing_features":["color","brand","shape"],"surface":"desk|shelf|table|floor|...","zone_name":"place name like 'desk' or 'kitchen counter'","bbox":[x,y,w,h],"distance_m":number|null,"holder":"wearer"|"other"|"unknown","confidence":0..1}]}
+{"events":[{"kind":"placed"|"picked_up","detection_index":number|null,"label":"short noun phrase","description":"one sentence","distinguishing_features":["color","brand","shape"],"surface":"desk|shelf|table|floor|...","zone_name":"place name like 'desk' or 'kitchen counter'","bbox":[x,y,w,h],"distance_m":number|null,"holder":"wearer"|"other"|"unknown","confidence":0..1}]}
 
-bbox is normalized 0..1 in the last frame. distance_m is your estimate of camera-to-object distance in meters. Report an empty events array when nothing was put down or picked up. If narration audio is provided (for example "putting my keys here") use it to name the object. Never describe people's faces or identities.`;
+bbox is normalized 0..1 in the last frame (give your best box even if detector boxes are listed). distance_m is your estimate of camera-to-object distance in meters.
+You may also get a numbered list "DETECTOR BOXES" for the last frame from an on-device object detector. Add "detection_index": the index of the detector box that is the newly placed (or picked-up) object, or null if none of them is. Only the wearer's object counts, never a person or the surface it sits on. Report an empty events array when nothing was put down or picked up. If narration audio is provided (for example "putting my keys here") use it to name the object. Never describe people's faces or identities.`;
 
 export const VERIFY_SYSTEM = `You check whether a specific object is visible in the latest camera frame.
 Reply with ONLY one JSON object: {"visible":true|false,"bbox":[x,y,w,h]?,"distance_m":number|null?,"note":"one short sentence"}. bbox is normalized 0..1 and only present when visible.`;
@@ -38,3 +40,5 @@ export function renderHistory(history: HistoryItem[]): string {
   if (!history.length) return "(none)";
   return history.map((h) => `${h.role.toUpperCase()}: ${h.content}`).join("\n");
 }
+
+export const CROP_SYSTEM = `You see a tight crop of ONE object a wearer just put down. Reply with ONLY one JSON object: {"label":"short noun phrase","description":"one sentence with colour, material, brand","distinguishing_features":["..."]}. Never describe people.`;

@@ -1,4 +1,4 @@
-import type { AgentStep, PlacementResult, VerifyResult } from "@lastseen/shared";
+import type { AgentStep, CropDescription, Detection, PlacementResult, VerifyResult } from "@lastseen/shared";
 
 /** JPEG frame, base64 (no data: prefix). */
 export interface Frame {
@@ -25,6 +25,8 @@ export interface PlacementCtx {
   knownZones: string[];
   /** wearer narration during the placement ("putting my keys here"), fused with vision */
   narration?: AudioClip;
+  /** on-device detector boxes for the LAST frame; OMNI answers which index is the new object */
+  detections?: Detection[];
 }
 
 export interface HistoryItem {
@@ -55,6 +57,8 @@ export interface OmniClient {
   /** audio is sent on the first step only; later steps rely on the transcript in history */
   understandUtterance(audio: AudioClip | null, ctx: UtteranceCtx): Promise<OmniResult<AgentStep>>;
   verifyVisible(frame: Frame, objectDescription: string, audio?: AudioClip): Promise<OmniResult<VerifyResult>>;
+  /** describe one object from a tight crop (better label/features than the full frame) */
+  describeCrop(crop: Frame, hint: { label: string }): Promise<OmniResult<CropDescription>>;
   speak(text: string): Promise<OmniResult<AudioClip | null>>;
 }
 

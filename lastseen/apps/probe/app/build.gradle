@@ -1,0 +1,40 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace = "dev.lastseen.probe"
+    compileSdk = 36
+    defaultConfig {
+        applicationId "dev.lastseen.probe"
+        minSdkVersion 24
+        targetSdkVersion 36
+        versionCode 1
+        versionName "1.0"
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.core:core:$androidxCoreVersion"
+    // CameraX for the native camera streamer (fps, JPEG, exclusivity and soak probes)
+    implementation "androidx.camera:camera-core:$androidxCameraVersion"
+    implementation "androidx.camera:camera-camera2:$androidxCameraVersion"
+    implementation "androidx.camera:camera-lifecycle:$androidxCameraVersion"
+    implementation "androidx.lifecycle:lifecycle-runtime:$androidxLifecycleVersion"
+
+    testImplementation "junit:junit:$junitVersion"
+    // real org.json for JVM unit tests (the android.jar stubs throw "not mocked")
+    testImplementation 'org.json:json:20250107'
+}

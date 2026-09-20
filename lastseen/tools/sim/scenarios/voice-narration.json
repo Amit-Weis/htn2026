@@ -1,0 +1,12 @@
+{
+  "name": "voice-narration",
+  "description": "the wearer narrates 'putting my wallet here': audio + vision name the object even while walking, and the detector box positions it",
+  "steps": [
+    { "op": "pose", "x": 0, "y": 0, "headingDeg": 0 },
+    { "op": "place", "label": "wallet", "trigger": "voice", "narration": "putting my wallet here", "scripted": false,
+      "walking": true, "zone": "hall table", "detections": [ { "label": "book", "score": 0.7, "bbox": [0.6, 0.5, 0.2, 0.15] } ] },
+    { "op": "expectIngest", "accepted": 1, "dropped": 0 },
+    { "op": "expectLedger", "count": 1, "has": [ { "label": "wallet", "boxSource": "detector" } ] },
+    { "op": "ask", "text": "where is my wallet", "expect": { "target": "wallet", "replyIncludes": "wallet", "arrowFromPlacement": "wallet" } }
+  ]
+}

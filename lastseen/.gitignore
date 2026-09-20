@@ -6,3 +6,8 @@ dist/
 apps/worker/public/
 *.tsbuildinfo
 worker-configuration.d.ts
+.wrangler-dev.log
+tools/one-xr/
+docs/probe-data/
+.android-build.log
+.onexr-build.log

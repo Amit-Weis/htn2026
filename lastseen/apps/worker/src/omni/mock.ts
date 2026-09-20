@@ -1,5 +1,6 @@
 import { formatAge } from "@lastseen/shared";
-import type { AgentStep, PlacementEvent, PlacementResult, ToolName, VerifyResult } from "@lastseen/shared";
+import type { AgentStep, CropDescription, PlacementEvent, PlacementResult, ToolName, VerifyResult } from "@lastseen/shared";
+import { labelsCompatible } from "../memory/text";
 import type { AudioClip, Frame, OmniCapabilities, OmniClient, OmniResult, PlacementCtx, UtteranceCtx } from "./types";
 
 /**
@@ -18,6 +19,7 @@ const CANNED: PlacementEvent[] = [
     label: "keys",
     description: "A ring of silver keys with a red tag",
     distinguishing_features: ["silver", "red tag"],
+    detection_index: null,
     surface: "desk",
     zone_name: "desk",
     bbox: [0.4, 0.5, 0.2, 0.15],
@@ -30,6 +32,7 @@ const CANNED: PlacementEvent[] = [
     label: "mug",
     description: "A white ceramic coffee mug",
     distinguishing_features: ["white", "ceramic", "handle"],
+    detection_index: null,
     surface: "shelf",
     zone_name: "shelf",
     bbox: [0.55, 0.35, 0.18, 0.2],
@@ -42,6 +45,7 @@ const CANNED: PlacementEvent[] = [
     label: "phone charger",
     description: "A white USB-C charger with a braided cable",
     distinguishing_features: ["white", "braided cable"],
+    detection_index: null,
     surface: "table",
     zone_name: "kitchen table",
     bbox: [0.3, 0.6, 0.15, 0.1],
@@ -97,12 +101,47 @@ export class MockOmni implements OmniClient {
     return Promise.resolve({ value, latencyMs: 5, costCad: 0 });
   }
 
-  extractPlacements(frames: Frame[], _ctx: PlacementCtx): Promise<OmniResult<PlacementResult>> {
+  /**
+   * Answers the detection-index question like the real model would: a scripted event that omits
+   * `detection_index` gets the best label-compatible detector box; an explicit `null` stays null
+   * (so tests can exercise the "OMNI rejects every box" fallback).
+   */
+  extractPlacements(frames: Frame[], ctx: PlacementCtx): Promise<OmniResult<PlacementResult>> {
     const last = frames[frames.length - 1];
+    const dets = ctx.detections ?? [];
     const scripted = last ? decodeJson(last.b64)?.mock : undefined;
-    if (scripted && typeof scripted === "object" && "events" in scripted) return this.done(scripted as PlacementResult);
-    const pick = CANNED[hash(last?.b64 ?? "") % CANNED.length]!;
-    return this.done({ events: [pick] });
+    const narrated = ctx.narration ? decodeJson(ctx.narration.b64)?.mockTranscript : undefined;
+    let events: PlacementEvent[];
+    if (scripted && typeof scripted === "object" && "events" in scripted) {
+      events = ((scripted as { events: Array<Partial<PlacementEvent>> }).events).map((e) => {
+        const ev = { ...CANNED[0]!, ...e } as PlacementEvent;
+        if (!("detection_index" in e)) {
+          const i = dets.findIndex((d) => labelsCompatible(d.label, ev.label));
+          ev.detection_index = i >= 0 ? i : null;
+        }
+        return ev;
+      });
+    } else {
+      const pick = { ...CANNED[hash(last?.b64 ?? "") % CANNED.length]! };
+      if (typeof narrated === "string") {
+        const m = /putting (?:down |away )?(?:my |the |a |an )?(.+?)(?: here| down| there|$)/i.exec(narrated);
+        if (m) pick.label = m[1]!.trim();
+      }
+      if (dets.length) {
+        let best = dets.findIndex((d) => labelsCompatible(d.label, pick.label));
+        if (best < 0) {
+          best = dets.reduce((bi, d, i) => (d.score > dets[bi]!.score ? i : bi), 0);
+          if (typeof narrated !== "string") pick.label = dets[best]!.label;
+        }
+        pick.detection_index = best;
+      }
+      events = [pick];
+    }
+    return this.done({ events });
+  }
+
+  describeCrop(_crop: Frame, hint: { label: string }): Promise<OmniResult<CropDescription>> {
+    return this.done({ label: hint.label, description: `${hint.label} (close-up)`, distinguishing_features: ["mock-crop"] });
   }
 
   understandUtterance(audio: AudioClip | null, ctx: UtteranceCtx): Promise<OmniResult<AgentStep>> {
@@ -110,7 +149,7 @@ export class MockOmni implements OmniClient {
     const said =
       ctx.text ??
       (typeof scripted?.mockTranscript === "string" ? scripted.mockTranscript : undefined) ??
-      ctx.history.find((h) => h.role === "user")?.content ??
+      [...ctx.history].reverse().find((h) => h.role === "user")?.content ??
       "";
     const addressed = scripted?.addressed !== false;
     const t = said.toLowerCase().trim();
@@ -158,6 +197,8 @@ export class MockOmni implements OmniClient {
           return final(r.visible ? `Yes, your ${String(r.label ?? "object")} is right there.` : `No, I don't see it there anymore. ${String(r.note ?? "")}`.trim());
         case "forget":
           return final(prev.args?.objectId === "all" ? "Okay, I've forgotten everything." : "Okay, forgotten.");
+        case "recenter":
+          return final("Okay, view re-centered.");
         case "mark_moved":
           return final("Got it, I'll treat it as moved.");
         case "clarify":
@@ -171,6 +212,7 @@ export class MockOmni implements OmniClient {
     if (/\bforget\b.*\b(everything|all)\b/.test(t)) return tool("forget", { objectId: "all" });
     let m = /\bforget\b\s+(.+)/.exec(t);
     if (m) return tool("find_object", { query: clean(m[1]!) });
+    if (/(re-?center|straight ahead|reset (my )?view)/.test(t)) return tool("recenter", {});
     if (/(what|which).*(put down|last|recent)/.test(t)) return tool("list_recent", { limit: 1 });
     if (/(still there|still here|is it there|check (it|again))/.test(t) && target) return tool("verify_visible", { objectId: target });
     m = /\bwhere(?:'s|s| is| are)?\s+(?:is\s+|are\s+)?(.+)/.exec(t) ?? /\b(?:find|locate)\s+(.+)/.exec(t);

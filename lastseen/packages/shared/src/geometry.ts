@@ -82,8 +82,91 @@ export function objectPosition(
 }
 
 /** Arrow angle = wrap180(atan2(dx, dy) - h_now); 0 = straight ahead, + = clockwise (right). */
-export function arrowAngle(target: Vec2, pose: Vec2, headingDeg: number): number {
-  return wrap180(azimuthDeg(target.x - pose.x, target.y - pose.y) - headingDeg);
+export function arrowAngleFromHeading(target: Vec2, pos: Vec2, headingDeg: number): number {
+  return wrap180(azimuthDeg(target.x - pos.x, target.y - pos.y) - headingDeg);
+}
+
+/** A head pose older than this is ignored and the chest heading is used instead. */
+export const HEAD_POSE_FRESH_MS = 300;
+
+export interface HeadPoseLike {
+  /** epoch ms */
+  t: number;
+  yawDeg: number;
+}
+
+/**
+ * Heading the wearer is looking along: the glasses yaw (plus the calibration offset) when a fresh
+ * head pose exists, else the chest heading. `nowMs` is epoch ms.
+ */
+export function headHeading(
+  pose: { headingDeg: number },
+  headPose?: HeadPoseLike | null,
+  headOffsetDeg = 0,
+  nowMs: number = Date.now(),
+): number {
+  if (headPose && nowMs - headPose.t >= 0 && nowMs - headPose.t < HEAD_POSE_FRESH_MS) {
+    return wrap360(headPose.yawDeg + headOffsetDeg);
+  }
+  return wrap360(pose.headingDeg);
+}
+
+/**
+ * Arrow angle for the HUD. Uses the head heading when the glasses head pose is fresh
+ * (< 300 ms old), otherwise the chest heading. angle = wrap180(bearingToTarget - headHeading).
+ */
+export function arrowAngle(
+  target: Vec2,
+  pose: Vec2 & { headingDeg: number },
+  headPose?: HeadPoseLike | null,
+  headOffsetDeg = 0,
+  nowMs: number = Date.now(),
+): number {
+  const h = headHeading(pose, headPose, headOffsetDeg, nowMs);
+  return wrap180(azimuthDeg(target.x - pose.x, target.y - pose.y) - h);
+}
+
+/** Offset that makes the glasses yaw agree with the chest heading right now (wearer looking straight ahead). */
+export function calibrateHeadOffset(pose: { headingDeg: number }, headPose: { yawDeg: number }): number {
+  return wrap180(pose.headingDeg - headPose.yawDeg);
+}
+
+export interface PoseLike extends Vec2 {
+  t: number;
+  headingDeg: number;
+  stationary?: boolean;
+}
+
+/**
+ * Pose at epoch-ms time `t` from a time-ordered slice: linear position, shortest-arc heading.
+ * Clamps to the first/last sample outside the slice. Returns null for an empty slice.
+ */
+export function poseAt<P extends PoseLike>(slice: P[], t: number): P | null {
+  if (!slice.length) return null;
+  const first = slice[0]!;
+  const last = slice[slice.length - 1]!;
+  if (t <= first.t) return first;
+  if (t >= last.t) return last;
+  for (let i = 1; i < slice.length; i++) {
+    const b = slice[i]!;
+    if (b.t < t) continue;
+    const a = slice[i - 1]!;
+    const f = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
+    return {
+      ...a,
+      t,
+      x: a.x + f * (b.x - a.x),
+      y: a.y + f * (b.y - a.y),
+      headingDeg: wrap360(a.headingDeg + f * wrap180(b.headingDeg - a.headingDeg)),
+    };
+  }
+  return last;
+}
+
+/** Fraction of samples where the wearer was not stationary (0 for an empty slice). */
+export function movingFraction(slice: Array<{ stationary: boolean }>): number {
+  if (!slice.length) return 0;
+  return slice.filter((p) => !p.stationary).length / slice.length;
 }
 
 export function distanceM(a: Vec2, b: Vec2): number {

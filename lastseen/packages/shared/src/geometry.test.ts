@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  arrowAngle,
+  arrowAngleFromHeading,
   azimuthDeg,
   chooseMode,
   clipDistance,
@@ -114,31 +114,31 @@ describe("clipDistance / objectPosition", () => {
   });
 });
 
-describe("arrowAngle", () => {
+describe("arrowAngleFromHeading", () => {
   const origin = { x: 0, y: 0 };
   it("is 0 when the target is straight ahead", () => {
-    close(arrowAngle({ x: 0, y: 5 }, origin, 0), 0);
-    close(arrowAngle({ x: 5, y: 0 }, origin, 90), 0);
+    close(arrowAngleFromHeading({ x: 0, y: 5 }, origin, 0), 0);
+    close(arrowAngleFromHeading({ x: 5, y: 0 }, origin, 90), 0);
   });
   it("is +90 when the target is to the right, -90 to the left", () => {
-    close(arrowAngle({ x: 5, y: 0 }, origin, 0), 90);
-    close(arrowAngle({ x: -5, y: 0 }, origin, 0), -90);
+    close(arrowAngleFromHeading({ x: 5, y: 0 }, origin, 0), 90);
+    close(arrowAngleFromHeading({ x: -5, y: 0 }, origin, 0), -90);
   });
   it("is +/-180 when the target is behind", () => {
-    close(Math.abs(arrowAngle({ x: 0, y: -5 }, origin, 0)), 180);
+    close(Math.abs(arrowAngleFromHeading({ x: 0, y: -5 }, origin, 0)), 180);
   });
   it("wraps correctly across +/-180", () => {
     // heading 170, target due south (bearing 180) => +10
-    close(arrowAngle({ x: 0, y: -5 }, origin, 170), 10);
+    close(arrowAngleFromHeading({ x: 0, y: -5 }, origin, 170), 10);
     // heading 190 (=-170), target due south => -10
-    close(arrowAngle({ x: 0, y: -5 }, origin, 190), -10);
+    close(arrowAngleFromHeading({ x: 0, y: -5 }, origin, 190), -10);
     // heading 10, target bearing 350 => -20 (through north)
-    close(arrowAngle({ x: -Math.sin((10 * Math.PI) / 180), y: Math.cos((10 * Math.PI) / 180) }, origin, 10), -20);
+    close(arrowAngleFromHeading({ x: -Math.sin((10 * Math.PI) / 180), y: Math.cos((10 * Math.PI) / 180) }, origin, 10), -20);
     // heading 350, target bearing 10 => +20
-    close(arrowAngle({ x: Math.sin((10 * Math.PI) / 180), y: Math.cos((10 * Math.PI) / 180) }, origin, 350), 20);
+    close(arrowAngleFromHeading({ x: Math.sin((10 * Math.PI) / 180), y: Math.cos((10 * Math.PI) / 180) }, origin, 350), 20);
   });
   it("handles a pose that is not at the origin", () => {
-    close(arrowAngle({ x: 11, y: 20 }, { x: 10, y: 20 }, 0), 90);
+    close(arrowAngleFromHeading({ x: 11, y: 20 }, { x: 10, y: 20 }, 0), 90);
   });
 });
 

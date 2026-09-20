@@ -6,13 +6,20 @@ import { deflateSync } from "node:zlib";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+// Reads OMNI_* from ./.env when present (Node >= 20.12). Not done for the sim: that .env may hold the production token.
+try {
+  (process as unknown as { loadEnvFile?: (p: string) => void }).loadEnvFile?.(fileURLToPath(new URL("../.env", import.meta.url)));
+} catch {
+  /* no .env: rely on the process environment */
+}
+
 const KEY = process.env.OMNI_API_KEY ?? "";
 const BASE = (process.env.OMNI_BASE_URL ?? "https://yibuapi.com/v1").replace(/\/$/, "");
 const MODEL = process.env.OMNI_MODEL ?? "qwen3.5-omni-flash";
 const OUT = fileURLToPath(new URL("../docs/omni-capabilities.md", import.meta.url));
 
 if (!KEY) {
-  console.error("OMNI_API_KEY is not set. Put it in .env (see .env.example) and run with `node --env-file=.env` or export it.");
+  console.error("OMNI_API_KEY is not set. Put it in .env (see .env.example) or export it.");
   process.exit(2);
 }
 

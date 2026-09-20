@@ -1,4 +1,4 @@
-import { routeAgentRequest } from "agents";
+import { getAgentByName, routeAgentRequest } from "agents";
 import type { Env } from "./env";
 import { isMockOmni } from "./omni";
 
@@ -34,6 +34,16 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/") && !authorized(request, env)) return deny();
+
+    // Thumbnails: /api/frames/<device>/<frameId>?token=... (token in the query so <img> works)
+    const fm = /^\/api\/frames\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+    if (fm) {
+      const agent = await getAgentByName(env.TrackerAgent, decodeURIComponent(fm[1]!));
+      const b64 = await agent.getFrameJpeg(fm[2]!);
+      if (!b64) return new Response("not found", { status: 404 });
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      return new Response(bytes, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" } });
+    }
 
     const routed = await routeAgentRequest(request, env, {
       cors: true,

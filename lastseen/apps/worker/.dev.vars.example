@@ -3,3 +3,8 @@ DEVICE_TOKEN=dev-token
 OMNI_API_KEY=
 # Overrides the wrangler.jsonc var locally
 MOCK_OMNI=1
+# Local wrangler dev has no Vectorize: use offline embeddings + SQLite vectors
+USE_VECTORIZE=0
+# Optional remote detector (off by default)
+# DETECTOR_URL=
+# DETECTOR_SECRET=

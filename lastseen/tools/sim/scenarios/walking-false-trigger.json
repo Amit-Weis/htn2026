@@ -1,0 +1,19 @@
+{
+  "name": "walking-false-trigger",
+  "description": "a detector candidate captured while walking is dropped on the phone, and by the agent if it slips through; explicit voice intent is not",
+  "steps": [
+    { "op": "pose", "x": 0, "y": 0, "headingDeg": 0 },
+
+    { "op": "place", "label": "keys", "walking": true },
+    { "op": "expectIngest", "accepted": 0, "dropped": 0, "phoneDrops": { "walking": 1 } },
+    { "op": "expectLedger", "count": 0 },
+
+    { "op": "place", "label": "keys", "walking": true, "bypassFilter": true },
+    { "op": "expectIngest", "accepted": 0, "dropped": 1, "reasons": { "walking": 1 } },
+    { "op": "expectLedger", "count": 0 },
+
+    { "op": "place", "label": "keys", "trigger": "voice", "narration": "putting my keys here", "walking": true },
+    { "op": "expectIngest", "accepted": 1, "dropped": 1, "reasons": { "walking": 1 } },
+    { "op": "expectLedger", "count": 1, "has": [ { "label": "keys", "boxSource": "detector" } ] }
+  ]
+}

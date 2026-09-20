@@ -1,0 +1,2 @@
+rootProject.name = "lastseen-probe"
+include ':app'

@@ -1,0 +1,9 @@
+{
+  "name": "Lastseen",
+  "short_name": "Lastseen",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}
