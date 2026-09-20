@@ -1,6 +1,6 @@
 # Lastseen
 
-A wearable memory for objects. A Xreal Beam Pro is strapped to the chest and runs a Capacitor Android APK. It watches the scene
+A wearable memory for objects. A Xreal Beam Pro is strapped to the chest and runs a Unity Android app. It watches the scene
 with an on-device object detector; when you put something down it logs **what** it was and **where**. Later you ask out loud
 ("where are my keys?") and the Xreal One glasses (mirroring the phone screen) show an arrow toward the object's last known
 location while a voice answers.
@@ -13,18 +13,21 @@ Built at Hack the North 2026 for two sponsor tracks:
 | **Cloudflare Best Agent with a Brain** | Workers is the backend: a `TrackerAgent` Durable Object per device (state, SQLite memory, tools, a 4-step planning loop, traces), a durable retried Workflow for ingest, Vectorize + Workers AI for semantic recall, the Images binding for cropping, `schedule()` for retention. The dashboard shows it plan, remember and call tools live. |
 
 Architecture, data flow and the mermaid diagram: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Design decisions: [docs/DECISIONS.md](docs/DECISIONS.md).
-The interface the Kotlin teammates implement: [docs/NATIVE_CONTRACT.md](docs/NATIVE_CONTRACT.md).
+The Unity client (setup, config, first on-device checks): [docs/unity-client.md](docs/unity-client.md). The Capacitor-era native
+plugin contract, kept for reference: [docs/NATIVE_CONTRACT.md](docs/NATIVE_CONTRACT.md).
 
 ## Repo layout
 
 ```
 apps/worker      Worker gateway, TrackerAgent (Durable Object), ingest Workflow, tools, OMNI adapter
-apps/wearable    web layer of the wearer app (TypeScript): native plugin bindings + fallbacks, filter, HUD, voice
+apps/wearable    desktop simulator of the wearer (TypeScript): the reference for the phone-side logic and what tools/sim drives.
+                 NOT the product client any more: that is the Unity app in ../Assets/Scripts (Lastseen + LastseenApp)
 apps/probe       plain Android hardware-probe app (Kotlin, no Capacitor): sensors, camera, thermal, keys, display
 apps/dashboard   judge/debug dashboard served at /dash
 packages/shared  zod contract v2 (+ v1 compat), geometry, native payload schemas
 tools/sim        scenario runner: real phone-side code + mock plugins over the real WebSocket
-scripts/         probe-omni, validate-native, android.mjs (build/install/probe pipeline), probe-report
+scripts/         probe-omni, validate-native, android.mjs (build/install/probe pipeline), probe-report,
+                 gen-vectors (TS<->C# test vectors), unity-check (headless Unity compile + EditMode tests)
 docs/            ARCHITECTURE, DECISIONS, NATIVE_CONTRACT, omni-capabilities
 ```
 
@@ -36,13 +39,15 @@ Requirements: Node >= 20 (22 recommended: tests use the built-in `node:sqlite`),
 
 ```bash
 pnpm install
-pnpm check         # typecheck + lint + tests (about 170 tests, all offline)
-pnpm sim:local     # builds the web apps, starts `wrangler dev` with MOCK_OMNI=1, plays every scenario, stops it
+pnpm check         # typecheck + lint + tests (about 230 tests, all offline)
+pnpm sim:local     # builds the web apps, starts `wrangler dev` with MOCK_OMNI=1, plays every scenario and the HTTP API checks
+pnpm unity:test    # compiles the Unity C# and runs its EditMode tests in a headless editor (needs Unity 6000.0.84f1)
 ```
 
 `pnpm sim:local` plays five scenarios through the **real** phone-side code and WebSocket path against the real agent:
 `keys-on-table` (accepted, with detections; queries give correct arrows; "my drinking thing" finds the mug),
 `walking-false-trigger` (dropped), `duplicate-burst` (deduped and cooled down), `voice-narration`, `move-and-verify`.
+It then exercises the HTTP API the Unity client uses (`POST /api/ingest` with a stereo pair, `POST /api/query`, `GET /api/memory`).
 `pnpm check:all` runs both.
 
 Try it by hand:

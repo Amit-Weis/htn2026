@@ -1,3 +1,5 @@
+> **Superseded.** The stereo depth here now lives in the main Worker (`lastseen/apps/worker/src/ingest/stereo.ts`, reached through `POST /api/ingest`), and voice commands go through `POST /api/query`, so the agent keeps memory across questions. This Worker is kept for reference (its tests document the block-matching conventions) and should not be deployed. See `lastseen/docs/DECISIONS.md` entries 59-63.
+
 # htn-locator
 
 Cloudflare Worker: side-by-side stereo JPEG in, target position out.

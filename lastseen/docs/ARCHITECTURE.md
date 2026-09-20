@@ -1,35 +1,40 @@
 # Architecture
 
 Lastseen is a wearable memory for objects. A Xreal Beam Pro is strapped to the chest (portrait, upright, screen against the
-chest, rear camera facing forward) and runs a **Capacitor Android APK**. The Xreal One glasses mirror the phone screen and show
+chest, rear camera facing forward) and runs a **Unity Android app** (`Assets/Scripts/Lastseen` + `LastseenApp`). The Xreal One glasses mirror the phone screen and show
 the HUD. When the wearer puts something down the system logs what and where; later they ask out loud and the glasses show an
 arrow while a voice answers.
 
 ```mermaid
 flowchart LR
-  subgraph APK["Beam Pro: Capacitor APK"]
+  subgraph APK["Beam Pro: Unity app"]
     direction TB
-    subgraph NATIVE["Native layer (Kotlin plugins)"]
-      DET["LastseenDetector<br/>CameraX + MediaPipe EfficientDet-Lite0<br/>6 s keyframe ring, stills, candidates"]
-      POSE["LastseenPose<br/>heading, steps, PDR,<br/>stationary, putDown"]
-      HEAD["LastseenHeadPose<br/>glasses yaw (experimental)"]
-      KEYS["LastseenKeys<br/>volume / clicker / media keys"]
+    subgraph SENS["Sensing"]
+      LIVE["LiveDetector<br/>AR camera frames -> MediaPipe EfficientDet-Lite0<br/>(Kotlin/Java plugin, ~2 fps, all classes)"]
+      DR["DeadReckoningTracker<br/>accelerometer step peaks + fused heading<br/>-> pose (x, y, heading, stationary)"]
+      DUAL["DualCameraCapture (Camera2)<br/>left | right side-by-side JPEG"]
     end
-    subgraph WEB["Web layer (apps/wearable, TypeScript)"]
-      BRIDGE["Bridge + CandidateFilter<br/>drop if walking, cooldown,<br/>attach pose slice"]
-      VOICE["VoiceIO<br/>mic, VAD, PTT, barge-in, playback"]
-      HUD["HUD<br/>arrow from head pose or chest heading,<br/>10+ Hz, local"]
+    subgraph LOGIC["Logic (C#, unit-tested)"]
+      STAB["ObjectStabilityTracker<br/>held still for N s, wearer standing still"]
+      CAP["PlacementCapture<br/>photo, re-detect on the left half,<br/>build the /api/ingest body"]
+      VOICE["VoiceQuery<br/>push-to-talk, WAV out, spoken reply in"]
+      HUD["HudArrow<br/>angle = bearing - head yaw, every frame, local"]
     end
-    DET -- placementCandidate, getFrames --> BRIDGE
-    POSE -- pose, putDown --> BRIDGE
-    HEAD -. headPose: LOCAL ONLY .-> HUD
-    KEYS -- key events --> VOICE
-    BRIDGE --- HUD
-    VOICE --- HUD
+    CLIENT["WorkerClient (HTTP + bearer token)"]
+    LIVE --> STAB
+    DR -- stationary --> STAB
+    STAB -- placed --> CAP
+    DUAL --> CAP
+    DR -- pose slice --> CAP
+    CAP --> CLIENT
+    VOICE --> CLIENT
+    DR -- pose --> VOICE
+    CLIENT -- target --> HUD
+    DR --> HUD
   end
   GLASSES["Xreal One glasses<br/>(mirror of the screen)"]
   HUD ==> GLASSES
-  GLASSES -. head yaw .-> HEAD
+  GLASSES -. "head yaw (Camera.main)" .-> HUD
 
   subgraph CF["Cloudflare"]
     GW["Worker gateway<br/>bearer auth, static assets,<br/>thumbnail route"]
@@ -42,38 +47,39 @@ flowchart LR
   OMNI[["Qwen3.5-Omni<br/>via yibuapi"]]
   DASH["Dashboard /dash"]
 
-  BRIDGE -- "placement_candidate (WebSocket)" --> GW
-  VOICE -- "utterance + frame + pose" --> GW
-  BRIDGE -- "pose 2 Hz" --> GW
+  CLIENT -- "POST /api/ingest (candidate + stereo pair)" --> GW
+  CLIENT -- "POST /api/query (audio + pose)" --> GW
   GW <--> AG
   AG -- runWorkflow --> WF
   WF -- RPC steps --> AG
   AG -- "extractPlacements, describeCrop,<br/>understandUtterance, verifyVisible, speak" --> OMNI
   AG --> WAI --> VEC
   AG --> IMG
-  AG -- "setState: target, status, ingest stats" --> HUD
+  AG -- "setState: target, status, ingest stats" --> DASH
   AG <--> DASH
 ```
 
 ## Layers and who owns what
 
-| Layer | Code | Owner |
+| Layer | Code | Notes |
 | --- | --- | --- |
-| Native (camera, detection, sensors, glasses, keys) | Kotlin Capacitor plugins, spec in [NATIVE_CONTRACT.md](NATIVE_CONTRACT.md) | teammates |
-| Web layer | `apps/wearable` (TypeScript, Vite) | this repo |
-| Contract | `packages/shared` (zod schemas, geometry, v1/v2 compat, native payload schemas) | this repo |
-| Backend | `apps/worker` (Worker gateway, `TrackerAgent`, Workflow, OMNI adapter) | this repo |
-| Dashboard | `apps/dashboard` | this repo |
-| Simulator | `tools/sim` (drives the real `Bridge`/`CandidateFilter` with mock plugins over the real WebSocket) | this repo |
+| Unity client (sensing, dead reckoning, capture, voice, HUD) | `../Assets/Scripts/Lastseen` (pure C#, unit-tested) and `LastseenApp` (MonoBehaviours), plus the teammates' `Forgetmenot` (MediaPipe bridge) and `DualCameraCapture` | see [unity-client.md](unity-client.md) |
+| Contract | `packages/shared` (zod schemas, geometry, v1/v2 compat, `test-vectors/geometry.json`) | TypeScript is the reference; C# replays the vectors |
+| Backend | `apps/worker` (Worker gateway, `TrackerAgent`, Workflow, OMNI adapter, stereo depth, HTTP API) | |
+| Dashboard | `apps/dashboard` | live view of ledger, traces, budget |
+| Simulator | `tools/sim` + `apps/wearable` (the old TypeScript wearer layer: real `Bridge`/`CandidateFilter` with mock plugins over the real WebSocket) | regression harness for the backend; not the product client |
+| Hardware probes | `apps/probe` (plain Android app) + `scripts/android.mjs` | camera exclusivity, concurrent cameras, sensors, FOV: answers what the Unity client can rely on |
 
 ## Ingest path (a placement becomes a ledger row)
 
-1. **Native detector** watches the scene at ~2 fps on the phone. When an object appears and the scene settles for 800 ms it emits
-   `placementCandidate` with up to 6 keyframes (640 px JPEG), the detector boxes for each, optionally one full-res still.
-   Detection is on the phone: no frames leave the device until a candidate exists.
-2. **Web layer** (`CandidateFilter`) drops it if the wearer was walking in `[t-1.5 s, t+0.5 s]` (using the local pose ring buffer),
-   applies a 4 s cooldown, then attaches the pose slice and `hfovDeg`. Backup triggers (narration key, dashboard remote button,
-   `putDown`) pull the same kind of payload from the native ring buffer via `getFrames()` + `captureStill()`.
+1. **On the phone**, `LiveDetector` runs MediaPipe at ~2 fps on the AR camera feed. `ObjectStabilityTracker` fires when a detection has held
+   roughly the same place for ~3.5 s **while the wearer stands still** (screen positions mean nothing while the chest-mounted camera moves;
+   every track is dropped the moment the wearer steps). No frames leave the device until then.
+2. **`PlacementCapture`** takes the dual-camera photo (left | right side by side), cuts out the left half as the keyframe, re-runs the detector on
+   it (so the boxes match the image the depth is measured on), and POSTs `/api/ingest` with the pose slice around that moment, `hfovDeg`, the
+   boxes and the whole side-by-side JPEG as `stereo`. A manual "Log what's in front of me" button sends the same thing with trigger `manual`.
+   (The TypeScript `CandidateFilter`, walking filter and 4 s cooldown live on in `apps/wearable` for the simulator; the Worker enforces
+   the same guards in step 3, so the Unity client does not depend on them.)
 3. **Agent guards** (cheapest first, nothing calls OMNI): no image bytes -> `no_image`; mostly non-stationary pose slice ->
    `walking` (voice/manual/put_down are exempt); frame hash within 4 bits of one of the last 10 -> `duplicate`; within 4 s of the
    last accepted candidate -> `cooldown`; already 6 OMNI vision calls this minute -> `rate_limit`. Every drop writes a trace with
@@ -84,8 +90,25 @@ flowchart LR
    `describe-crop` crops the chosen box (plus margin) from the full-res still with the Images binding and asks OMNI to describe
    just that crop. `reconcile` positions the object, decides same-object-or-new, writes the sighting, upserts the vector.
    `notify` pushes the ledger to the dashboards.
-5. **Position** = pose at the frame time + `d * (sin(h + phi), cos(h + phi))`, `phi = (bboxCenterX - 0.5) * hfov`. The box is the
-   detector box OMNI chose; else OMNI's own box; else none (straight ahead, low confidence).
+5. **Position.** The box is the detector box OMNI chose; else OMNI's own box; else none (straight ahead, low confidence).
+   - **Stereo (preferred):** when the candidate carries a `stereo` pair and there is a box, `ingest/stereo.ts` block-matches the centre patch of the
+     box between the two halves. `depth = fx * baseline / disparity` (`fx` from the half-image FOV; baseline `STEREO_BASELINE_M`, default 0.06 m,
+     a placeholder until measured). The pinhole model (`objectPositionFromDepth`) turns pixel + depth + heading into `x, y` and a height relative
+     to the camera. A flat or repetitive patch (`ambiguous`), an implied depth beyond 8 m, or a box at the image edge falls back to:
+   - **OMNI's distance estimate:** `d` clipped to 0.3-3 m along `phi = (bboxCenterX - 0.5) * hfov`; a missing estimate means 0.8 m.
+   Every ledger row records how it was positioned (`posSource`: `stereo` | `omni` | `default`) and, for stereo, its height (`heightM`); the trace
+   shows the depth, disparity and match ratio. The stereo pair is deleted after reconcile, like the other keyframes.
+
+## HTTP API (the Unity client; same agent, guards and memory as the WebSocket)
+
+| Route | Body | Reply |
+| --- | --- | --- |
+| `POST /api/ingest[?wait=1]` | a placement candidate (contract v2, no `type`), optional `stereo: {jpegBase64, baselineM?, swap?}` | `{accepted, candidateId, status, objects[]}` or `{accepted:false, reason}`; `wait=1` holds up to 25 s until the object is logged |
+| `POST /api/query` | `{text \| audioB64+mime, poseAtT?, frame?}` | `{turnId, addressed, text, audioB64?, mime?, target}`: the spoken answer and the HUD target this turn set |
+| `GET /api/memory` | | objects, pose, target, ingest stats, budget, recent traces: what the agent currently remembers |
+
+All take `?device=<id>` (default `default`) and the bearer token. HTTP has no socket to answer a `request_frame`, so a `frame` in the query body
+stands in for the live view when the agent calls `verify_visible`; without one that tool reports "inconclusive".
 
 ## Query path (asking "where are my keys?")
 

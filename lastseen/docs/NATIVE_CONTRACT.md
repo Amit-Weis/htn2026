@@ -1,5 +1,11 @@
 # Native plugin contract (contract v2)
 
+> **Superseded as the product client.** The wearer app is now the Unity app in `../Assets/Scripts` (see
+> [unity-client.md](unity-client.md)), which talks to the Worker over HTTP (`POST /api/ingest`, `POST /api/query`), not through Capacitor
+> plugins. This document describes the Capacitor-era plugin boundary and is kept because `apps/wearable` (the desktop simulator) and
+> `pnpm validate:native` still implement it, and because the pose/heading rules below (step detector, heading from the rotation
+> vector, `stationary` = no step in 1500 ms) are what `Assets/Scripts/Lastseen` ports to C#.
+
 The wearer app ships as a **Capacitor Android APK** on the Xreal Beam Pro. `apps/wearable` is only the web layer
 (TypeScript: HUD, voice, upload logic). Everything that touches hardware is a native Kotlin Capacitor plugin.
 This document is the interface the Kotlin side implements. It is enforced by zod schemas in
