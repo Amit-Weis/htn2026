@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.detector import ObjectDetector, UnsupportedTargetError
+from src.detector import CombinedBackend, ObjectDetector, UnsupportedTargetError
 from src.models import BoundingBox, DetectionResult
 
 
@@ -40,6 +40,17 @@ def test_unsupported_target_does_not_run_inference():
     assert backend.frames == []
 
 
+def test_custom_model_label_can_be_selected():
+    backend = FakeBackend([result("hacker_card", 0.91, (1, 2, 30, 40))])
+    detector = ObjectDetector(
+        backend=backend, supported_classes=("hacker_card",)
+    )
+    found = detector.detect(
+        np.zeros((50, 50, 3), dtype=np.uint8), "HACKER_CARD"
+    )
+    assert [item.class_name for item in found] == ["hacker_card"]
+
+
 def test_multiple_detections_are_preserved():
     backend = FakeBackend([
         result("cell phone", 0.9, (0, 0, 10, 10)),
@@ -52,6 +63,14 @@ def test_multiple_detections_are_preserved():
 def test_no_detections_returns_empty_list():
     detector = ObjectDetector(backend=FakeBackend([]))
     assert detector.detect(np.zeros((2, 2, 3), dtype=np.uint8)) == []
+
+
+def test_combined_backend_merges_model_results():
+    first = FakeBackend([result("person", 0.9, (0, 0, 10, 10))])
+    second = FakeBackend([result("hacker_card", 0.8, (20, 20, 40, 40))])
+    backend = CombinedBackend([first, second])
+    found = backend.detect(np.zeros((50, 50, 3), dtype=np.uint8))
+    assert [item.class_name for item in found] == ["person", "hacker_card"]
 
 
 def test_bbox_center_calculation():

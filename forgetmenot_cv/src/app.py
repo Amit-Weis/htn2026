@@ -10,7 +10,15 @@ from time import perf_counter
 
 import cv2
 
-from .detector import COCO_CLASSES, ObjectDetector, UnsupportedTargetError, validate_target
+from .detector import (
+    COCO_CLASSES,
+    CombinedBackend,
+    MediaPipeBackend,
+    ObjectDetector,
+    UltralyticsBackend,
+    UnsupportedTargetError,
+    validate_target,
+)
 from .inputs.image_source import ImageSource
 from .inputs.webcam_source import WebcamSource
 from .visualization import annotate
@@ -21,10 +29,18 @@ def build_parser() -> argparse.ArgumentParser:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--image", type=Path, help="path to a static image")
     source.add_argument("--webcam", type=int, help="OpenCV camera index, usually 0")
-    parser.add_argument("--target", help='optional COCO class, e.g. "cell phone"')
+    parser.add_argument("--target", help='optional model class, e.g. "cell phone"')
+    parser.add_argument(
+        "--custom-label",
+        help='single label embedded in a custom model, e.g. "hacker_card"',
+    )
     parser.add_argument(
         "--model", type=Path, default=Path("models/efficientdet_lite0.tflite"),
-        help="path to EfficientDet-Lite0 TFLite model",
+        help="path to a MediaPipe TFLite model or custom YOLO .pt/.onnx model",
+    )
+    parser.add_argument(
+        "--hacker-card-model", type=Path,
+        help="also run this custom YOLO model alongside the COCO model",
     )
     parser.add_argument("--threshold", type=float, default=0.3)
     parser.add_argument("--outputs", type=Path, default=Path("outputs"))
@@ -72,8 +88,25 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--threshold must be between 0 and 1")
 
     try:
-        validate_target(args.target)
-        with ObjectDetector(args.model, args.threshold) as detector:
+        if args.hacker_card_model:
+            supported_classes = COCO_CLASSES + ("hacker_card",)
+            primary_backend = (
+                UltralyticsBackend(args.model, args.threshold)
+                if args.model.suffix.lower() in {".pt", ".onnx"}
+                else MediaPipeBackend(args.model, args.threshold)
+            )
+            backend = CombinedBackend([
+                primary_backend,
+                UltralyticsBackend(args.hacker_card_model, args.threshold),
+            ])
+        else:
+            supported_classes = (args.custom_label,) if args.custom_label else COCO_CLASSES
+            backend = None
+        validate_target(args.target, supported_classes)
+        with ObjectDetector(
+            args.model, args.threshold, backend=backend,
+            supported_classes=supported_classes,
+        ) as detector:
             if args.image is not None:
                 process_image(args, detector)
             else:

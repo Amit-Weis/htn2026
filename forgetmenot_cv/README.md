@@ -33,9 +33,66 @@ python app.py --webcam 0 --target "cell phone"
 
 Press `Q` to quit. The desktop harness uses synchronous image inference frame-by-frame for one source-independent `detect(frame)` API.
 
+To show regular COCO objects and the custom hacker card in the same preview:
+
+```bash
+source .yolo-venv/bin/activate
+python app.py --webcam 0 \
+  --model yolo26n.pt \
+  --hacker-card-model training/runs/hacker_card-2/weights/best.pt
+```
+
 ## Labels
 
 EfficientDet-Lite0 uses the 80 COCO classes embedded in its TFLite metadata. List accepted names with `python app.py --list-classes`. `cell phone`, `backpack`, `bottle`, and `remote` are supported; `keys` and `wallet` are not COCO classes.
+
+## Train the hacker-card model
+
+The custom-training tools live in `training/`. Annotation normalizes EXIF rotation,
+strips phone metadata, writes COCO boxes, and can be safely resumed.
+
+```bash
+cd forgetmenot_cv
+source .venv/bin/activate
+python training/annotate.py "/Users/ethanxinq/Downloads/New Folder With Items"
+python training/split_dataset.py training/data/all
+```
+
+In the annotation window, drag a tight rectangle around the whole purple card and
+press Enter or Space. Press `C` for a true negative image containing no card. The
+splitter keeps blocks of consecutive iPhone images together so burst photographs
+do not leak across train and test sets.
+
+Convert the COCO split to YOLO format and train the single-class detector:
+
+```bash
+python3 -m venv .yolo-venv
+source .yolo-venv/bin/activate
+python -m pip install -r requirements-train.txt
+python training/coco_to_yolo.py
+python training/train_yolo.py
+```
+
+Export the selected checkpoint to ONNX, install it for Android/Unity, and build:
+
+```bash
+python -c 'from ultralytics import YOLO; YOLO("training/runs/hacker_card/weights/best.pt").export(format="onnx", imgsz=640, simplify=False)'
+python training/deploy_model.py
+cd ../android_detector_test && ./gradlew :app:assembleDebug
+```
+
+The Android adapter letterboxes RGBA input to 640x640, runs ONNX Runtime,
+decodes the YOLO output, applies NMS, and preserves the existing JSON contract.
+Pass `hacker_card` as the target class.
+
+Validate the same checkpoint with a desktop webcam before deploying:
+
+```bash
+source .yolo-venv/bin/activate
+python app.py --webcam 0 \
+  --model training/runs/hacker_card/weights/best.pt \
+  --custom-label hacker_card --target hacker_card
+```
 
 ## Tests
 
@@ -48,6 +105,12 @@ Tests inject a fake backend and do not need MediaPipe or the TFLite model.
 ## Android / Beam Pro path
 
 Keep `DetectionResult`, bounding-box semantics, and target filtering. Replace OpenCV sources with CameraX/XREAL frames and use MediaPipe Tasks Vision for Android with the same `.tflite` asset. A production camera loop should use `LIVE_STREAM` mode, handle rotation/mirroring, and map image coordinates to display coordinates.
+
+The repository now includes the initial Unity/Android bridge under `Assets/Forgetmenot` and `Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib`. Prepare its model before an Android build with:
+
+```bash
+python download_model.py --android
+```
 
 ## Limitations
 
