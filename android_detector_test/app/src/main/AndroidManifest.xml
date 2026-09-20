@@ -4,7 +4,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="Forgetmenot Detector Test"
+        android:label="Forgetmenot"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"

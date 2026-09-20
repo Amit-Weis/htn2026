@@ -29,4 +29,5 @@ dependencies {
     implementation "androidx.camera:camera-lifecycle:${cameraxVersion}"
     implementation "androidx.camera:camera-view:${cameraxVersion}"
     implementation 'androidx.activity:activity:1.10.1'
+    implementation 'com.google.guava:guava:33.3.1-android'
 }

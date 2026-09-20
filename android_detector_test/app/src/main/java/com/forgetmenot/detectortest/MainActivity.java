@@ -4,9 +4,11 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
+import android.hardware.camera2.CameraCharacteristics;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.Log;
+import android.util.Size;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -17,9 +19,12 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.camera.core.CameraSelector;
+import androidx.camera.core.CameraInfo;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
+import androidx.camera.camera2.interop.Camera2CameraInfo;
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
@@ -31,11 +36,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.Collections;
 
 public final class MainActivity extends ComponentActivity {
     private static final String TAG = "ForgetmenotDetection";
-    private static final String TARGET_CLASS = "cell phone";
-    private static final long INFERENCE_INTERVAL_MS = 350L;
+    private static final String TARGET_CLASS = "hacker_card";
+    private static final long INFERENCE_INTERVAL_MS = 0L;
 
     private final ExecutorService analysisExecutor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean inferenceRunning = new AtomicBoolean(false);
@@ -45,6 +51,7 @@ public final class MainActivity extends ComponentActivity {
     private TextView statusView;
     private MediaPipeDetector detector;
     private long nextInferenceTimeMs;
+    private float selectedFocalLengthMm = Float.NaN;
 
     private final ActivityResultLauncher<String> permissionLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestPermission(), granted -> {
@@ -86,6 +93,7 @@ public final class MainActivity extends ComponentActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         statusLayout.gravity = Gravity.TOP;
         root.addView(statusView, statusLayout);
+
         setContentView(root);
     }
 
@@ -98,19 +106,54 @@ public final class MainActivity extends ComponentActivity {
                 preview.setSurfaceProvider(previewView.getSurfaceProvider());
 
                 ImageAnalysis analysis = new ImageAnalysis.Builder()
+                        .setTargetResolution(new Size(640, 480))
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build();
                 analysis.setAnalyzer(analysisExecutor, this::analyzeFrame);
 
                 provider.unbindAll();
                 provider.bindToLifecycle(
-                        this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis);
-                statusView.setText("Looking for: " + TARGET_CLASS);
+                        this, createUltraWideCameraSelector(), preview, analysis);
+                String cameraLabel = Float.isNaN(selectedFocalLengthMm)
+                        ? "rear camera"
+                        : "ultrawide · " + selectedFocalLengthMm + "mm";
+                statusView.setText("Looking for hacker card · " + cameraLabel);
             } catch (Exception exception) {
                 Log.e(TAG, "Could not start camera", exception);
                 statusView.setText("Camera failed: " + exception.getMessage());
             }
         }, ContextCompat.getMainExecutor(this));
+    }
+
+    @androidx.annotation.OptIn(markerClass = ExperimentalCamera2Interop.class)
+    private CameraSelector createUltraWideCameraSelector() {
+        return new CameraSelector.Builder()
+                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+                .addCameraFilter(cameraInfos -> {
+                    CameraInfo bestCamera = null;
+                    float shortestFocalLength = Float.MAX_VALUE;
+
+                    for (CameraInfo cameraInfo : cameraInfos) {
+                        float[] focalLengths = Camera2CameraInfo.from(cameraInfo)
+                                .getCameraCharacteristic(
+                                        CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                        if (focalLengths == null) continue;
+                        for (float focalLength : focalLengths) {
+                            if (focalLength < shortestFocalLength) {
+                                shortestFocalLength = focalLength;
+                                bestCamera = cameraInfo;
+                            }
+                        }
+                    }
+
+                    if (bestCamera == null) {
+                        selectedFocalLengthMm = Float.NaN;
+                        return cameraInfos;
+                    }
+                    selectedFocalLengthMm = shortestFocalLength;
+                    return Collections.singletonList(bestCamera);
+                })
+                .build();
     }
 
     private void analyzeFrame(@NonNull ImageProxy image) {
@@ -127,15 +170,19 @@ public final class MainActivity extends ComponentActivity {
             byte[] rgba = toRgba(upright);
             long frameId = frameCounter.incrementAndGet();
             long timestampMs = image.getImageInfo().getTimestamp() / 1_000_000L;
+            long inferenceStartedMs = SystemClock.elapsedRealtime();
             String json = detector.detectRgba(
                     rgba, upright.getWidth(), upright.getHeight(), TARGET_CLASS,
                     frameId, timestampMs, 0, false);
+            long inferenceMs = Math.max(1L, SystemClock.elapsedRealtime() - inferenceStartedMs);
+            float inferenceFps = 1000f / inferenceMs;
             upright.recycle();
 
             Log.d(TAG, json);
             runOnUiThread(() -> {
                 overlayView.setDetectionJson(json);
-                statusView.setText("Looking for: " + TARGET_CLASS + " · frame " + frameId);
+                statusView.setText("Looking for: " + TARGET_CLASS + " · "
+                        + inferenceMs + " ms · " + String.format("%.1f FPS", inferenceFps));
             });
         } catch (Exception exception) {
             Log.e(TAG, "Detection failed", exception);

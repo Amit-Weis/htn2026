@@ -1,6 +1,6 @@
 # Forgetmenot Beam Pro detector test
 
-Standalone Android test harness for the non-Unity half of Forgetmenot. It uses CameraX, the shared MediaPipe Android library, and EfficientDet-Lite0 to prove that Beam Pro camera frames can produce aligned `cell phone` bounding boxes and the JSON contract consumed by Unity.
+Standalone Android test harness for the non-Unity half of Forgetmenot. It uses CameraX and the shared ONNX Runtime library to prove that Beam Pro camera frames can produce aligned `hacker_card` bounding boxes and the JSON contract consumed by Unity.
 
 This APK is a development tool. The final product remains the Unity-built Android application.
 
@@ -9,7 +9,7 @@ This APK is a development tool. The final product remains the Unity-built Androi
 From the repository root:
 
 ```bash
-python forgetmenot_cv/download_model.py --android
+python forgetmenot_cv/training/deploy_model.py forgetmenot_cv/training/runs/hacker_card/weights/best.onnx
 ```
 
 This places the ignored model file in the shared Android library's assets directory.
@@ -27,9 +27,9 @@ Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib
 3. Confirm `adb devices` lists it as `device`.
 4. Select Beam Pro in Android Studio and run the `app` configuration.
 5. Accept camera permission.
-6. Point the rear camera at a phone.
+6. Point the rear camera at the hacker card.
 
-The app processes approximately one frame every 350 ms, draws `CELL PHONE <confidence>%`, and logs the complete handoff JSON under `ForgetmenotDetection`.
+The app processes approximately one frame every 350 ms, draws `HACKER_CARD <confidence>%`, and logs the complete handoff JSON under `ForgetmenotDetection`.
 
 ```bash
 adb logcat -s ForgetmenotDetection:D '*:S'
@@ -38,8 +38,8 @@ adb logcat -s ForgetmenotDetection:D '*:S'
 ## Completion checklist
 
 - Camera preview remains smooth.
-- A phone produces an aligned box and center marker.
-- No phone produces an empty detection list without errors.
+- A hacker card produces an aligned box and center marker.
+- No card produces an empty detection list without errors.
 - Portrait rotation is correct.
 - `frame_id` increases monotonically.
 - `timestamp_ms` is populated.
