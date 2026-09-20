@@ -32,11 +32,13 @@ class UnsupportedTargetError(ValueError):
     """The target is not part of the model label map."""
 
 
-def validate_target(target_class: str | None) -> str | None:
-    """Return the canonical COCO label without loading the inference model."""
+def validate_target(
+    target_class: str | None, supported_classes: tuple[str, ...] = COCO_CLASSES
+) -> str | None:
+    """Return the canonical label without loading the inference model."""
     if target_class is None:
         return None
-    lookup = {label.casefold(): label for label in COCO_CLASSES}
+    lookup = {label.casefold(): label for label in supported_classes}
     normalized = target_class.strip().casefold()
     if normalized not in lookup:
         raise UnsupportedTargetError(
@@ -48,6 +50,20 @@ def validate_target(target_class: str | None) -> str | None:
 class DetectionBackend(Protocol):
     def detect(self, frame: np.ndarray) -> list[DetectionResult]: ...
     def close(self) -> None: ...
+
+
+class CombinedBackend:
+    """Runs multiple independent models and merges their normalized detections."""
+
+    def __init__(self, backends: list[DetectionBackend]) -> None:
+        self._backends = backends
+
+    def detect(self, frame: np.ndarray) -> list[DetectionResult]:
+        return [item for backend in self._backends for item in backend.detect(frame)]
+
+    def close(self) -> None:
+        for backend in reversed(self._backends):
+            backend.close()
 
 
 class MediaPipeBackend:
@@ -115,6 +131,53 @@ class MediaPipeBackend:
         self._task.close()
 
 
+class UltralyticsBackend:
+    """Adapter for custom YOLO checkpoints used during desktop validation."""
+
+    def __init__(self, model_path: str | Path, score_threshold: float = 0.3) -> None:
+        from ultralytics import YOLO
+
+        model_path = Path(model_path)
+        if not model_path.is_file():
+            raise FileNotFoundError(f"Model not found: {model_path}")
+        self._model = YOLO(str(model_path))
+        self._score_threshold = score_threshold
+
+    def detect(self, frame: np.ndarray) -> list[DetectionResult]:
+        if not isinstance(frame, np.ndarray) or frame.ndim != 3 or frame.shape[2] != 3:
+            raise ValueError("frame must be a non-empty HxWx3 BGR NumPy array")
+        prediction = self._model.predict(
+            source=frame, conf=self._score_threshold, verbose=False
+        )[0]
+        results: list[DetectionResult] = []
+        if prediction.boxes is None:
+            return results
+        height, width = frame.shape[:2]
+        names = prediction.names
+        for coordinates, score, class_index in zip(
+            prediction.boxes.xyxy.cpu().tolist(),
+            prediction.boxes.conf.cpu().tolist(),
+            prediction.boxes.cls.cpu().tolist(),
+        ):
+            x1, y1, x2, y2 = coordinates
+            results.append(
+                DetectionResult.from_bbox(
+                    names[int(class_index)],
+                    float(score),
+                    BoundingBox(
+                        x1=max(0, min(width, round(x1))),
+                        y1=max(0, min(height, round(y1))),
+                        x2=max(0, min(width, round(x2))),
+                        y2=max(0, min(height, round(y2))),
+                    ),
+                )
+            )
+        return results
+
+    def close(self) -> None:
+        pass
+
+
 class ObjectDetector:
     """Validates targets and filters normalized backend results."""
 
@@ -123,15 +186,22 @@ class ObjectDetector:
         model_path: str | Path = "models/efficientdet_lite0.tflite",
         score_threshold: float = 0.3,
         backend: DetectionBackend | None = None,
+        supported_classes: tuple[str, ...] = COCO_CLASSES,
     ) -> None:
-        self._backend = backend or MediaPipeBackend(model_path, score_threshold)
+        if backend is not None:
+            self._backend = backend
+        elif Path(model_path).suffix.lower() in {".pt", ".onnx"}:
+            self._backend = UltralyticsBackend(model_path, score_threshold)
+        else:
+            self._backend = MediaPipeBackend(model_path, score_threshold)
+        self._supported_classes = supported_classes
 
     @property
     def supported_classes(self) -> tuple[str, ...]:
-        return COCO_CLASSES
+        return self._supported_classes
 
     def validate_target(self, target_class: str | None) -> str | None:
-        return validate_target(target_class)
+        return validate_target(target_class, self._supported_classes)
 
     def detect(
         self, frame: np.ndarray, target_class: str | None = None
