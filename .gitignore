@@ -113,3 +113,13 @@ Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/src/main/assets/*.tflite
 Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/src/main/assets/*.onnx
 !Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/src/main/assets/hacker_card.onnx
 Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/build/
+
+# Omni / Worker: never commit keys or the device token
+lastseen/.env
+lastseen/apps/worker/.dev.vars
+Assets/Resources/lastseen.json
+Assets/Resources/lastseen.json.meta
+.claude/
+
+cloudflare/locator/node_modules/
+lastseen/docs 

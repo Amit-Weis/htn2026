@@ -1,0 +1,16 @@
+{
+  "name": "duplicate-burst",
+  "description": "a burst of near-identical candidates is deduped by frame hash, and rapid different candidates hit the cooldown",
+  "steps": [
+    { "op": "pose", "x": 0, "y": 0, "headingDeg": 0 },
+
+    { "op": "place", "label": "keys", "hash": "aaaa5555aaaa5555" },
+    { "op": "place", "label": "mug", "zone": "shelf", "advanceMs": 2000, "bypassFilter": true },
+    { "op": "place", "label": "mug", "zone": "shelf", "advanceMs": 1000 },
+    { "op": "place", "label": "keys", "hash": "aaaa5555aaaa5555", "advanceMs": 5000 },
+    { "op": "place", "label": "keys", "hash": "aaaa5555aaaa5556", "advanceMs": 5000 },
+
+    { "op": "expectIngest", "accepted": 1, "dropped": 3, "reasons": { "cooldown": 1, "duplicate": 2 }, "phoneDrops": { "cooldown": 1 } },
+    { "op": "expectLedger", "count": 1, "has": [ { "label": "keys" } ], "absent": ["mug"] }
+  ]
+}

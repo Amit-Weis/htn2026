@@ -1,0 +1,27 @@
+{
+  "name": "@lastseen/wearable",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./native/mock": "./src/native/mock.ts",
+    "./native/types": "./src/native/types.ts",
+    "./filter": "./src/candidateFilter.ts",
+    "./hud-model": "./src/hudModel.ts",
+    "./keys": "./src/keyGestures.ts",
+    "./bridge": "./src/bridge.ts",
+    "./pose-corrector": "./src/poseCorrector.ts"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.0",
+    "@lastseen/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0"
+  }
+}

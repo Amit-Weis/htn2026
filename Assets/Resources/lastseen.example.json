@@ -1,0 +1,4 @@
+{
+  "workerUrl": "https://lastseen.<your-subdomain>.workers.dev",
+  "token": "<the DEVICE_TOKEN secret you set with `wrangler secret put DEVICE_TOKEN`>"
+}

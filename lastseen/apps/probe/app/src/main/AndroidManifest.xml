@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        android:theme="@style/AppTheme">
+
+        <!--
+            Orientation is deliberately NOT locked (no android:screenOrientation): milestone A0 has to find out what the glasses
+            do in portrait vs landscape. configChanges keeps the Activity (and a running probe) alive across rotation.
+        -->
+        <activity
+            android:name=".ProbeActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:launchMode="singleTask"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".DisplayProbeActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:exported="false" />
+
+        <!-- Persistent "Lastseen running" service. Android 14 requires the foregroundServiceType to be declared here. -->
+        <service
+            android:name=".ProbeForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="camera|microphone" />
+    </application>
+
+    <!-- Permissions requested by milestone A0 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- The earlier Capacitor build found its WebChromeClient denied getUserMedia({audio}) unless MODIFY_AUDIO_SETTINGS (install-time)
+         was declared. Not verified for a plain WebView; kept so the exclusivity probe's WebView behaves like a frontend's would. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- The step detector is gated by ACTIVITY_RECOGNITION; sampling above 200 Hz needs HIGH_SAMPLING_RATE_SENSORS (Android 12+). -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+</manifest>

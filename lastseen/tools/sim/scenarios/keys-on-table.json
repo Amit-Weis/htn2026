@@ -1,0 +1,27 @@
+{
+  "name": "keys-on-table",
+  "description": "keys on a desk and a mug on a shelf are detected and logged; later queries return correct arrows and answers",
+  "steps": [
+    { "op": "pose", "x": 0, "y": 0, "headingDeg": 0, "holdMs": 1500 },
+
+    { "op": "place", "label": "keys", "box": [0.6, 0.5, 0.2, 0.15], "distanceM": 1.5, "zone": "desk", "still": true,
+      "description": "A ring of silver keys with a red tag", "features": ["silver", "red tag"] },
+    { "op": "turn", "headingDeg": 270 },
+    { "op": "place", "label": "mug", "box": [0.3, 0.4, 0.2, 0.2], "distanceM": 2, "zone": "shelf",
+      "description": "A white ceramic coffee mug", "features": ["white", "ceramic", "handle"] },
+
+    { "op": "expectLedger", "count": 2,
+      "has": [ { "label": "keys", "zone": "desk", "status": "placed", "boxSource": "detector" },
+               { "label": "mug", "zone": "shelf", "status": "placed", "boxSource": "detector" } ] },
+    { "op": "expectIngest", "accepted": 2, "dropped": 0 },
+
+    { "op": "walk", "to": [3, -2], "headingDeg": 0 },
+
+    { "op": "ask", "text": "where are my keys?",
+      "expect": { "target": "keys", "replyIncludes": "keys", "toolCalled": "guide_to", "arrowDeg": -37.35, "tolDeg": 1, "arrowFromPlacement": "keys" } },
+    { "op": "ask", "text": "what did I put down last?", "expect": { "replyIncludes": "mug", "toolCalled": "list_recent" } },
+    { "op": "ask", "text": "where's my drinking thing?", "expect": { "target": "mug", "replyIncludes": "mug", "arrowFromPlacement": "mug" } },
+    { "op": "ask", "text": "did you catch the game last night", "ambient": true },
+    { "op": "ask", "text": "recenter my view", "expect": { "toolCalled": "recenter", "replyIncludes": "re-centered" } }
+  ]
+}

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lastseen Dashboard</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="logo"></span>Lastseen <small>agent on Cloudflare Workers</small></div>
+      <div id="conn" class="pill off">connecting…</div>
+      <div class="budget" title="estimated OMNI spend (KV guard)">
+        <span id="budget-text">0.00 / 30.00 CAD</span>
+        <div class="bar"><div id="budget-bar"></div></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="card map">
+        <h2>Live map <span id="agent-status" class="pill">idle</span></h2>
+        <canvas id="map" width="720" height="520"></canvas>
+        <div id="target-line" class="muted"></div>
+      </section>
+
+      <section class="card controls">
+        <h2>Controls</h2>
+        <form id="ask">
+          <input id="ask-text" placeholder='Ask: "where are my keys?"' autocomplete="off" />
+          <button>Ask</button>
+        </form>
+        <div class="row">
+          <button id="capture">Force capture</button>
+          <button id="ptt" title="hold to talk through the wearable's microphone path">Hold to talk</button>
+          <button id="forget" class="danger">Forget all</button>
+        </div>
+        <h3>Ingest</h3>
+        <div class="counters">
+          <div class="counter ok"><b id="c-acc">0</b><span>accepted</span></div>
+          <div class="counter bad"><b id="c-drop">0</b><span>dropped</span></div>
+        </div>
+        <div id="reasons" class="chips"></div>
+        <div id="last-reply" class="reply"></div>
+      </section>
+
+      <section class="card ledger">
+        <h2>Ledger <small id="ledger-count"></small></h2>
+        <div id="ledger" class="list"></div>
+      </section>
+
+      <section class="card trace">
+        <h2>Agent trace <small>plan · tools · latency · cost</small></h2>
+        <div id="trace" class="list"></div>
+      </section>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "move-and-verify",
+  "description": "the keys are moved; asking 'is it still there?' makes the agent look, catch the mismatch and update the ledger",
+  "steps": [
+    { "op": "pose", "x": 0, "y": 0, "headingDeg": 0 },
+    { "op": "place", "label": "keys", "box": [0.5, 0.5, 0.2, 0.2] },
+    { "op": "ask", "text": "where are my keys?", "expect": { "target": "keys" } },
+    { "op": "camera", "mock": { "visible": false, "note": "The desk is empty." } },
+    { "op": "ask", "text": "is it still there?", "expect": { "toolCalled": "verify_visible", "replyIncludes": "don't see it" } },
+    { "op": "expectLedger", "has": [ { "label": "keys", "status": "moved" } ] }
+  ]
+}

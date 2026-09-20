@@ -28,7 +28,35 @@ namespace Forgetmenot
         [Tooltip("Hide everything if nothing has been seen for this long. 0 keeps it up forever.")]
         [SerializeField, Min(0f)] float hideAfterUnseenSeconds;
 
+        [Header("Wait for a request (Omni voice trigger)")]
+        [Tooltip("When on, the objects stay hidden even after the card has been seen, until Request() is called, and hide again " +
+                 "showForSeconds later. Switched on by OmniVoiceTrigger when it is configured; off keeps the original behaviour.")]
+        [SerializeField] bool requireRequest;
+        [SerializeField, Min(1f)] float showForSeconds = 20f;
+
         bool revealed;
+        float requestedUntil = float.NegativeInfinity;
+
+        public bool RequireRequest
+        {
+            get { return requireRequest; }
+            set { requireRequest = value; }
+        }
+
+        /// <summary>The card has been seen at least once, so there is somewhere to point.</summary>
+        public bool HasAnchor => anchor != null && anchor.HasAnchor;
+
+        /// <summary>The wearer asked for the card: show the objects for showForSeconds (once the card has been seen).</summary>
+        public void Request()
+        {
+            requestedUntil = Time.unscaledTime + showForSeconds;
+        }
+
+        /// <summary>Hide again now.</summary>
+        public void Cancel()
+        {
+            requestedUntil = float.NegativeInfinity;
+        }
 
         void Awake()
         {
@@ -41,7 +69,8 @@ namespace Forgetmenot
         {
             if (anchor == null) return;
 
-            bool shouldShow = anchor.HasAnchor &&
+            bool requested = !requireRequest || Time.unscaledTime <= requestedUntil;
+            bool shouldShow = requested && anchor.HasAnchor &&
                 (hideAfterUnseenSeconds <= 0f || anchor.SecondsSinceSeen <= hideAfterUnseenSeconds);
 
             if (shouldShow && !revealed)
