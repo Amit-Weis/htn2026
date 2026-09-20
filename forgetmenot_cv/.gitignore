@@ -7,3 +7,10 @@ outputs/*
 samples/*
 !samples/.gitkeep
 models/
+training/data/
+training/exported_model/
+training/data/yolo/
+training/runs/
+.train-venv/
+.yolo-venv/
+yolo*.pt
