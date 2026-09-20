@@ -160,7 +160,7 @@ MonoBehaviour:
   distance: 1.5
   heightFrac: 0.25
   margin: 0.08
-  showRawQuad: 1
+  showRawQuad: 0
   showOverlayQuad: 1
   boxColor: {r: 0.72, g: 0.35, b: 1, a: 1}
   boxThicknessFrac: 0.012
@@ -523,6 +523,9 @@ MonoBehaviour:
   headCamera: {fileID: 1497265958}
   totem: {fileID: 1959581098}
   hideAfterUnseenSeconds: 0
+  requireRequest: 0
+  showForSeconds: 20
+  keepForgottenSeconds: 600
 --- !u!114 &1148976117
 MonoBehaviour:
   m_ObjectHideFlags: 0
