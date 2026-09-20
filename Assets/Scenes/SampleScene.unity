@@ -154,6 +154,7 @@ MonoBehaviour:
   requestedFps: 30
   targetClass: hacker_card
   scoreThreshold: 0.3
+  distanceConstant: 0.033
   inferenceIntervalSeconds: 0.5
   inferenceMaxEdge: 640
   distance: 1.5
@@ -182,7 +183,6 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 1
-  distanceConstant: 0
 --- !u!4 &830554702
 Transform:
   m_ObjectHideFlags: 0
@@ -538,20 +538,27 @@ MonoBehaviour:
   headCamera: {fileID: 1497265958}
   totem: {fileID: 1959581098}
   detachTotemOnStart: 1
-  poseSource: 1
+  useFixedPlacement: 1
+  fixedForwardMeters: 0.5
+  dropBelowEyesMeters: 0.9
+  latchFirstPlacement: 1
+  poseSource: 0
   captureLatencySeconds: 0.12
   poseHistorySize: 180
-  mountLocalPosition: {x: 0, y: 0, z: 0}
+  mountLocalPosition: {x: 0, y: -0.2, z: 0.04}
   mountLocalEuler: {x: 0, y: 0, z: 0}
   horizontalFovDegrees: 66
   imageRotation: 0
   mirrorX: 0
+  mirrorY: 1
+  cameraFacesBackwards: 0
   distanceIsAlongForward: 0
   minConfidence: 0.593
-  normalizedWidthDistanceConstant: 0.033
+  normalizedWidthDistanceConstant: 0.08
   distanceClampMeters: {x: 0.2, y: 8}
   positionSmoothing: 0.4
   resnapAfterSeconds: 1.5
+  logPlacement: 1
 --- !u!4 &1148976118
 Transform:
   m_ObjectHideFlags: 0
@@ -575,6 +582,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 140953816395690608, guid: 694c0248895d1024fbf819260b222c1e, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 140953816395690608, guid: 694c0248895d1024fbf819260b222c1e, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 140953816395690608, guid: 694c0248895d1024fbf819260b222c1e, type: 3}
       propertyPath: m_LocalPosition.z
       value: 0

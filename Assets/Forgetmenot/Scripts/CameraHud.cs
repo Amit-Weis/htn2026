@@ -151,6 +151,13 @@ namespace Forgetmenot
             Debug.Log($"[CameraHud] {cam.width}x{cam.height} rot={cam.videoRotationAngle} " +
                       $"mirrored={cam.videoVerticallyMirrored}", this);
 
+            if (cam.videoRotationAngle % 360 != 0)
+            {
+                Debug.LogWarning($"[CameraHud] WebCamTexture reports {cam.videoRotationAngle} degrees of " +
+                                 "rotation. Neither the HUD quads nor the inference frame undo it, so set " +
+                                 "LastSeenAnchor.imageRotation to match or the totem lands sideways.", this);
+            }
+
             BuildQuads();
             AllocateBuffers();
 
@@ -381,10 +388,23 @@ namespace Forgetmenot
 
             try
             {
-                // Flip on the blit so readback rows come out top-down, which is
-                // the row order the Java detector expects.
+                // Unity stores texture rows bottom-up and the Java detector reads
+                // them top-down, so the readback normally needs one flip. When the
+                // driver already hands frames back upside down the two cancel and
+                // the blit must not flip - same condition the HUD materials
+                // correct for above, so both paths now agree on which way is up.
+                // Get this wrong and every detection is mirrored about the horizon,
+                // which is exactly what LastSeenAnchor then plants in the world.
+                bool flipRows = !cam.videoVerticallyMirrored;
+                var blitScale = new Vector2(1f, flipRows ? -1f : 1f);
+                var blitOffset = new Vector2(0f, flipRows ? 1f : 0f);
+
+                // Stamped on the result so the anchor can rewind the head pose by
+                // the latency that actually happened, not by a slider.
+                float captureTime = Time.unscaledTime;
+
                 RenderTexture previous = RenderTexture.active;
-                Graphics.Blit(cam, scaledRt, new Vector2(1f, -1f), new Vector2(0f, 1f));
+                Graphics.Blit(cam, scaledRt, blitScale, blitOffset);
                 RenderTexture.active = scaledRt;
                 readbackTex.ReadPixels(new Rect(0, 0, scaledRt.width, scaledRt.height), 0, 0, false);
                 readbackTex.Apply(false);
@@ -411,6 +431,7 @@ namespace Forgetmenot
                     try
                     {
                         DetectionFrameResult r = detector.Detect(rgba, width, height, targetClass);
+                        if (r != null) r.captureUnscaledTime = captureTime;
                         lock (resultLock) pendingResult = r;
                     }
                     catch (Exception workerException)

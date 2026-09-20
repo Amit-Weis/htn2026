@@ -47,6 +47,14 @@ namespace Forgetmenot
         public int image_height;
         public DetectionResult[] detections = Array.Empty<DetectionResult>();
 
+        /// <summary>
+        /// Time.unscaledTime when the frame was grabbed, stamped by the producer
+        /// (CameraHud) after inference returns. Not part of the JSON contract, so
+        /// JsonUtility leaves it at 0, which means "unknown" and makes consumers
+        /// fall back to their fixed latency guess.
+        /// </summary>
+        [NonSerialized] public float captureUnscaledTime;
+
         public static DetectionFrameResult FromJson(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
