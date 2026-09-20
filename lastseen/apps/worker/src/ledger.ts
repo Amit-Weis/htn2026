@@ -1,4 +1,4 @@
-import type { Detection, ObjectRow, Pose, Trace } from "@lastseen/shared";
+import type { Detection, ObjectRow, Pose, PosSource, Trace } from "@lastseen/shared";
 
 /** Tagged-template SQL, matching the Agents SDK's `this.sql`. Tests plug in node:sqlite. */
 export type SqlTag = <T = Record<string, unknown>>(
@@ -24,6 +24,9 @@ export interface ObjectRecord {
   frameId: string | null;
   box: Box | null;
   boxSource: BoxSource;
+  /** height relative to the camera at placement (m, + up); null unless measured with stereo depth */
+  z?: number | null;
+  posSource?: PosSource;
 }
 
 export interface CandidateRecord {
@@ -76,6 +79,8 @@ interface ObjectSql {
   frame_id: string | null;
   box: string | null;
   box_source: string;
+  z?: number | null;
+  pos_source?: string | null;
 }
 
 const toObject = (r: ObjectSql): ObjectRecord => ({
@@ -92,6 +97,8 @@ const toObject = (r: ObjectSql): ObjectRecord => ({
   frameId: r.frame_id,
   box: p<Box | null>(r.box, null),
   boxSource: r.box_source as BoxSource,
+  z: r.z ?? null,
+  posSource: (r.pos_source as PosSource | null | undefined) ?? "omni",
 });
 
 /** All persistent memory of one TrackerAgent: objects, sightings, zones, pose ring buffer, traces, ingest state. */
@@ -121,6 +128,14 @@ export class Ledger {
     s`CREATE TABLE IF NOT EXISTS blobs (id TEXT PRIMARY KEY, mime TEXT, b64 TEXT)`;
     s`CREATE TABLE IF NOT EXISTS vectors (object_id TEXT PRIMARY KEY, vec TEXT)`;
     s`CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)`;
+    // Columns added after the first deploy. SQLite has no ADD COLUMN IF NOT EXISTS: a duplicate column throws, which is fine.
+    for (const alter of [() => s`ALTER TABLE objects ADD COLUMN z REAL`, () => s`ALTER TABLE objects ADD COLUMN pos_source TEXT`]) {
+      try {
+        alter();
+      } catch {
+        /* already there */
+      }
+    }
   }
 
   // ---- kv ----
@@ -177,6 +192,7 @@ export class Ledger {
   dropFramesExcept(candidateId: string, keepIds: string[]) {
     for (const f of this.framesOf(candidateId)) if (!keepIds.includes(f.id)) this.sql`DELETE FROM frames WHERE id = ${f.id}`;
     this.sql`DELETE FROM blobs WHERE id = ${"narration:" + candidateId}`;
+    this.sql`DELETE FROM blobs WHERE id = ${"stereo:" + candidateId}`;
   }
   deleteFrame(id: string) {
     this.sql`DELETE FROM frames WHERE id = ${id}`;
@@ -190,8 +206,8 @@ export class Ledger {
 
   // ---- objects + sightings ----
   createObject(o: ObjectRecord) {
-    this.sql`INSERT INTO objects (id, label, description, features, status, x, y, zone, last_seen_at, confidence, frame_id, box, box_source)
-      VALUES (${o.id}, ${o.label}, ${o.description}, ${j(o.features)}, ${o.status}, ${o.x}, ${o.y}, ${o.zone}, ${o.lastSeenAt}, ${o.confidence}, ${o.frameId}, ${o.box ? j(o.box) : null}, ${o.boxSource})`;
+    this.sql`INSERT INTO objects (id, label, description, features, status, x, y, zone, last_seen_at, confidence, frame_id, box, box_source, z, pos_source)
+      VALUES (${o.id}, ${o.label}, ${o.description}, ${j(o.features)}, ${o.status}, ${o.x}, ${o.y}, ${o.zone}, ${o.lastSeenAt}, ${o.confidence}, ${o.frameId}, ${o.box ? j(o.box) : null}, ${o.boxSource}, ${o.z ?? null}, ${o.posSource ?? "omni"})`;
   }
   updateObject(id: string, o: Partial<Omit<ObjectRecord, "id">>) {
     const cur = this.getObject(id);
@@ -199,7 +215,8 @@ export class Ledger {
     const n = { ...cur, ...o };
     this.sql`UPDATE objects SET label = ${n.label}, description = ${n.description}, features = ${j(n.features)}, status = ${n.status},
       x = ${n.x}, y = ${n.y}, zone = ${n.zone}, last_seen_at = ${n.lastSeenAt}, confidence = ${n.confidence},
-      frame_id = ${n.frameId}, box = ${n.box ? j(n.box) : null}, box_source = ${n.boxSource} WHERE id = ${id}`;
+      frame_id = ${n.frameId}, box = ${n.box ? j(n.box) : null}, box_source = ${n.boxSource},
+      z = ${n.z ?? null}, pos_source = ${n.posSource ?? "omni"} WHERE id = ${id}`;
   }
   getObject(id: string): ObjectRecord | null {
     const r = this.sql<ObjectSql>`SELECT * FROM objects WHERE id = ${id}`[0];
@@ -303,6 +320,7 @@ export class Ledger {
     const before = this.sql<{ n: number }>`SELECT COUNT(*) AS n FROM frames`[0]?.n ?? 0;
     this.sql`DELETE FROM frames WHERE t < ${cutoffMs}`;
     this.sql`DELETE FROM blobs WHERE id LIKE 'narration:%' AND id NOT IN (SELECT 'narration:' || id FROM candidates)`;
+    this.sql`DELETE FROM blobs WHERE id LIKE 'stereo:%' AND id NOT IN (SELECT 'stereo:' || id FROM candidates)`;
     const after = this.sql<{ n: number }>`SELECT COUNT(*) AS n FROM frames`[0]?.n ?? 0;
     return { objects: old, frames: before - after };
   }
@@ -322,6 +340,8 @@ export class Ledger {
       thumbUrl: o.frameId ? `/api/frames/${encodeURIComponent(device)}/${o.frameId}` : null,
       box: o.box,
       boxSource: o.boxSource,
+      heightM: o.z ?? null,
+      posSource: o.posSource ?? "omni",
     };
   }
 }

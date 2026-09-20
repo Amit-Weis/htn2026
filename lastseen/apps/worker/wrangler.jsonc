@@ -63,6 +63,10 @@
     "MAX_OMNI_PER_MIN": "6",
     "DEDUPE_WINDOW": "10",
     "WALK_FRACTION": "0.5",
-    "CROP_MIN_PIXELS": "1000000"
+    "CROP_MIN_PIXELS": "1000000",
+    // Stereo depth from a side-by-side JPEG (POST /api/ingest `stereo`). PLACEHOLDERS until measured on the Beam Pro.
+    "STEREO_BASELINE_M": "0.06",
+    "STEREO_SWAP": "0",
+    "STEREO_MAX_DEPTH_M": "8"
   }
 }

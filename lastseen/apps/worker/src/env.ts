@@ -30,6 +30,10 @@ export interface Env {
   DEDUPE_WINDOW?: string;
   WALK_FRACTION?: string;
   CROP_MIN_PIXELS?: string;
+  /** stereo depth (see docs/DECISIONS.md): camera baseline in metres, "1" if the first half of a side-by-side JPEG is the right camera */
+  STEREO_BASELINE_M?: string;
+  STEREO_SWAP?: string;
+  STEREO_MAX_DEPTH_M?: string;
   /** optional remote detector; OFF unless DETECTOR_URL is set */
   DETECTOR_URL?: string;
   DETECTOR_SECRET?: string;

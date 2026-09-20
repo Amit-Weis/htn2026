@@ -1,5 +1,6 @@
 import { getAgentByName, routeAgentRequest } from "agents";
 import type { Env } from "./env";
+import { deviceOf, parseIngest, parseQuery, readJson, waitOf } from "./httpParse";
 import { isMockOmni } from "./omni";
 
 export { TrackerAgent } from "./agent";
@@ -24,6 +25,39 @@ export function authorized(request: Request, env: Env): boolean {
 }
 
 const deny = () => new Response("unauthorized", { status: 401 });
+const fail = (status: number, error: string) => Response.json({ error }, { status });
+
+/**
+ * HTTP API for clients that do not hold a WebSocket (the Unity app). Same agent, same guards, same memory as the socket:
+ *   POST /api/ingest[?wait=1]   a placement candidate (JSON, see HttpIngestSchema) -> {accepted, candidateId, objects?}
+ *   POST /api/query             {text | audioB64, poseAtT?, frame?} -> {addressed, text, audioB64?, target}
+ *   GET  /api/memory            what the agent remembers (objects, pose, target, ingest stats, recent traces)
+ * All take `?device=<id>` (default "default") and the usual bearer token.
+ */
+async function handleHttpApi(request: Request, env: Env, url: URL): Promise<Response | null> {
+  const route = /^\/api\/(ingest|query|memory)$/.exec(url.pathname)?.[1];
+  if (!route) return null;
+  const want = route === "memory" ? "GET" : "POST";
+  if (request.method !== want) return new Response("method not allowed", { status: 405, headers: { Allow: want } });
+
+  const device = deviceOf(url, request.headers);
+  if (!device.ok) return fail(device.status, device.error);
+  const agent = await getAgentByName(env.TrackerAgent, device.value);
+
+  if (route === "memory") return Response.json(await agent.getMemory());
+
+  const body = await readJson(request);
+  if (!body.ok) return fail(body.status, body.error);
+  if (route === "ingest") {
+    const c = parseIngest(body.value);
+    if (!c.ok) return fail(c.status, c.error);
+    const r = await agent.httpIngest(c.value, waitOf(url));
+    return Response.json(r, { status: r.accepted && r.status !== "done" ? 202 : 200 });
+  }
+  const q = parseQuery(body.value);
+  if (!q.ok) return fail(q.status, q.error);
+  return Response.json(await agent.httpQuery(q.value));
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -34,6 +68,9 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/") && !authorized(request, env)) return deny();
+
+    const api = await handleHttpApi(request, env, url);
+    if (api) return api;
 
     // Thumbnails: /api/frames/<device>/<frameId>?token=... (token in the query so <img> works)
     const fm = /^\/api\/frames\/([^/]+)\/([^/]+)$/.exec(url.pathname);

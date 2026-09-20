@@ -81,6 +81,40 @@ export function objectPosition(
   return { x: pose.x + d * Math.sin(b), y: pose.y + d * Math.cos(b) };
 }
 
+export interface DepthPosition extends Vec2 {
+  /** height of the object relative to the camera, meters (+ up); assumes the camera is level */
+  zUp: number;
+  /** horizontal range from the camera to the object, meters */
+  rangeM: number;
+}
+
+/**
+ * Object position from a measured depth (stereo). Pinhole model, camera level.
+ * `depthM` is the distance along the optical axis (not the Euclidean range); `uNorm`/`vNorm` are the box centre in
+ * [0,1] from the top-left of the image; `aspect` = image width / height; `hfovDeg` is the horizontal FOV of that image.
+ * forward = (sin h, cos h), right = (cos h, -sin h).
+ */
+export function objectPositionFromDepth(
+  pose: Vec2,
+  headingDeg: number,
+  uNorm: number,
+  vNorm: number,
+  depthM: number,
+  hfovDeg = DEFAULT_HFOV_DEG,
+  aspect = 4 / 3,
+): DepthPosition {
+  const t = Math.tan((hfovDeg * DEG) / 2);
+  const right = (2 * uNorm - 1) * t * depthM;
+  const zUp = -(2 * vNorm - 1) * (t / aspect) * depthM;
+  const h = headingDeg * DEG;
+  return {
+    x: pose.x + depthM * Math.sin(h) + right * Math.cos(h),
+    y: pose.y + depthM * Math.cos(h) - right * Math.sin(h),
+    zUp,
+    rangeM: Math.hypot(depthM, right),
+  };
+}
+
 /** Arrow angle = wrap180(atan2(dx, dy) - h_now); 0 = straight ahead, + = clockwise (right). */
 export function arrowAngleFromHeading(target: Vec2, pos: Vec2, headingDeg: number): number {
   return wrap180(azimuthDeg(target.x - pos.x, target.y - pos.y) - headingDeg);

@@ -76,6 +76,8 @@ export const TargetSchema = z.object({
   /** age of the last sighting at the time the target was set */
   ageSec: z.number(),
   confidence: z.number().min(0).max(1),
+  /** height of the object relative to the camera when it was placed (m, + up); null unless measured with stereo depth */
+  heightM: z.number().nullable().optional(),
   thumbUrl: z.string().nullable(),
   mode: TargetModeSchema,
   /** when the target was set; client adds (now - setAt) to ageSec */
@@ -185,6 +187,9 @@ export type VerifyResult = z.infer<typeof VerifyResultSchema>;
 
 // ---------- Ledger rows (what the dashboard renders) ----------
 
+export const PosSourceSchema = z.enum(["stereo", "omni", "default"]);
+export type PosSource = z.infer<typeof PosSourceSchema>;
+
 export const ObjectStatusSchema = z.enum(["placed", "held", "moved", "forgotten"]);
 
 export const ObjectRowSchema = z.object({
@@ -203,6 +208,10 @@ export const ObjectRowSchema = z.object({
   /** box of the object in the thumbnail, normalized; drawn on the dashboard */
   box: Box.nullable(),
   boxSource: z.enum(["detector", "omni", "none"]),
+  /** height relative to the camera at placement (m, + up); null unless measured with stereo depth */
+  heightM: z.number().nullable().default(null),
+  /** how the distance was obtained: stereo disparity, OMNI's estimate, or the default range */
+  posSource: PosSourceSchema.default("omni"),
 });
 export type ObjectRow = z.infer<typeof ObjectRowSchema>;
 
@@ -238,6 +247,19 @@ export const PlacementCandidateSchema = z.object({
   stillFrame: FrameSchema.optional(),
   /** detector output aligned index-for-index with `frames` */
   detections: z.array(z.array(DetectionSchema)).optional(),
+  /**
+   * Optional stereo pair of the scene: ONE JPEG with the left camera on the left half and the right camera on the right
+   * half. The detector boxes are in the LEFT image; depth is measured at the chosen box.
+   */
+  stereo: z
+    .object({
+      jpegBase64: z.string(),
+      /** distance between the two cameras; the Worker default (STEREO_BASELINE_M) is used when omitted */
+      baselineM: z.number().positive().max(1).optional(),
+      /** true when the first half is actually the right camera */
+      swap: z.boolean().optional(),
+    })
+    .optional(),
   poseSlice: z.array(PoseSchema).max(600),
   hfovDeg: z.number().min(10).max(180),
   /** wearer narration for voice triggers ("putting my keys here") */
@@ -306,5 +328,35 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("error"), message: z.string() }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
+
+// ---------- HTTP API (Unity and other non-WebSocket clients) ----------
+
+/** POST /api/ingest body: a placement candidate without the WebSocket `type` tag. */
+export const HttpIngestSchema = PlacementCandidateSchema.omit({ type: true });
+
+/** POST /api/query body: a typed or spoken question, plus what the client saw when it asked. */
+export const HttpQuerySchema = z
+  .object({
+    turnId: z.string().min(1).max(64).optional(),
+    text: z.string().min(1).max(500).optional(),
+    audioB64: z.string().optional(),
+    mime: z.string().optional(),
+    /** latest camera frame; also used as the live view for verify_visible */
+    frame: FrameSchema.optional(),
+    poseAtT: PoseSchema.optional(),
+  })
+  .refine((q) => Boolean(q.text) || Boolean(q.audioB64), { message: "send text or audioB64" });
+export type HttpQuery = z.infer<typeof HttpQuerySchema>;
+
+export interface HttpQueryReply {
+  turnId: string;
+  /** false when the agent chose to ignore the audio (ambient chatter) or the turn was cancelled */
+  addressed: boolean;
+  text: string;
+  audioB64?: string;
+  mime?: string;
+  /** the HUD target this turn set, if any */
+  target: Target | null;
+}
 
 export const AGENT_CLASS_NAME = "tracker-agent";

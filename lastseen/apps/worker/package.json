@@ -11,6 +11,7 @@
   "dependencies": {
     "@lastseen/shared": "workspace:*",
     "agents": "^0.24.0",
+    "jpeg-js": "^0.4.4",
     "zod": "^4.0.0"
   },
   "devDependencies": {

@@ -83,6 +83,7 @@ function targetFor(host: ToolHost, o: ObjectRecord): Target | null {
     zone: o.zone,
     ageSec: ageSec(host, o),
     confidence,
+    heightM: o.z ?? null,
     thumbUrl: o.frameId ? `/api/frames/${encodeURIComponent(host.device)}/${o.frameId}` : null,
     mode: chooseMode(confidence, dist, host.cfg.minConfidence, host.cfg.maxRangeM),
     setAt: host.now(),
@@ -116,7 +117,7 @@ export async function verifyVisible(host: ToolHost, objectId: string): Promise<T
     const pose = host.pose();
     const cx = box ? box[0] + box[2] / 2 : 0.5;
     const pos = objectPosition(pose, pose.headingDeg, cx, r.value.distance_m, host.cfg.hfovDeg);
-    host.ledger.updateObject(o.id, { status: "placed", x: pos.x, y: pos.y, lastSeenAt: t, confidence: Math.min(1, 0.9 * pose.confidence), box: box ?? null, boxSource: box ? "omni" : "none" });
+    host.ledger.updateObject(o.id, { status: "placed", x: pos.x, y: pos.y, lastSeenAt: t, confidence: Math.min(1, 0.9 * pose.confidence), box: box ?? null, boxSource: box ? "omni" : "none", z: null, posSource: r.value.distance_m != null ? "omni" : "default" });
     host.ledger.addSighting({ id: nid("s"), objectId: o.id, t, kind: "verified", x: pos.x, y: pos.y, zone: o.zone, confidence: 0.9, frameId: null, box: box ?? null, boxSource: box ? "omni" : "none", candidateId: null });
     const fresh = host.ledger.getObject(o.id);
     const tgt = fresh ? targetFor(host, fresh) : null;

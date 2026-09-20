@@ -7,6 +7,7 @@ import {
   distanceM,
   headingFromOrientation,
   objectPosition,
+  objectPositionFromDepth,
   pdrStep,
   poseConfidence,
   smoothAngle,
@@ -203,5 +204,37 @@ describe("StepDetector", () => {
   it("enforces the ~300 ms minimum step interval", () => {
     // 5 Hz shaking would be 50 peaks in 10 s; the limiter caps it at 1000/300 = 33
     expect(walk(5, 3, 10)).toBeLessThanOrEqual(34);
+  });
+});
+
+describe("objectPositionFromDepth", () => {
+  it("straight ahead: the object is `depth` metres along the heading", () => {
+    const p = objectPositionFromDepth({ x: 1, y: 2 }, 0, 0.5, 0.5, 2);
+    close(p.x, 1);
+    close(p.y, 4);
+    close(p.zUp, 0);
+    close(p.rangeM, 2);
+  });
+
+  it("facing east, an object right of centre lies to the south of the line of sight", () => {
+    // hfov 90 => tan(45) = 1: the right image edge is `depth` metres to the right of the axis
+    const p = objectPositionFromDepth({ x: 0, y: 0 }, 90, 1, 0.5, 2, 90);
+    close(p.x, 2);
+    close(p.y, -2);
+    close(p.rangeM, Math.hypot(2, 2));
+  });
+
+  it("agrees with the linear-bearing model near the image centre", () => {
+    const d = 2;
+    const a = objectPositionFromDepth({ x: 0, y: 0 }, 30, 0.55, 0.5, d, 70);
+    const bearing = 30 + Math.atan((0.1) * Math.tan((35 * Math.PI) / 180)) * (180 / Math.PI);
+    const b = objectPosition({ x: 0, y: 0 }, 30, 0.55, a.rangeM, 70);
+    close(a.x, Math.sin((bearing * Math.PI) / 180) * a.rangeM, 1e-9);
+    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(0.02);
+  });
+
+  it("height: a box in the upper half of the image is above the camera", () => {
+    expect(objectPositionFromDepth({ x: 0, y: 0 }, 0, 0.5, 0.25, 2).zUp).toBeGreaterThan(0);
+    expect(objectPositionFromDepth({ x: 0, y: 0 }, 0, 0.5, 0.75, 2).zUp).toBeLessThan(0);
   });
 });

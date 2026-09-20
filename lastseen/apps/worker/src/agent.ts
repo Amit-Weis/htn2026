@@ -1,14 +1,14 @@
 import { Agent } from "agents";
 import type { Connection, WSMessage } from "agents";
 import { INITIAL_STATE, formatAge, parseClientMessage } from "@lastseen/shared";
-import type { ClientMessage, Frame, PlacementCandidate, ServerMessage, Trace, TrackerState } from "@lastseen/shared";
+import type { ClientMessage, Frame, HttpQuery, HttpQueryReply, ObjectRow, PlacementCandidate, ServerMessage, Trace, TrackerState } from "@lastseen/shared";
 import { ingestConfig } from "./config";
 import type { Env } from "./env";
 import { num } from "./env";
 import { ImagesCropper, NoCropper, PassthroughCropper } from "./ingest/crop";
 import type { Cropper } from "./ingest/crop";
 import { describeCrop, extract, intake, reconcile } from "./ingest/pipeline";
-import type { IngestConfig, IngestDeps, ReconcileSummary, TraceInput } from "./ingest/pipeline";
+import type { IngestConfig, IngestDeps, IntakeResult, ReconcileSummary, TraceInput } from "./ingest/pipeline";
 import { Ledger, nid } from "./ledger";
 import type { SqlTag } from "./ledger";
 import { LocalEmbedder, WorkersAiEmbedder } from "./memory/embed";
@@ -24,6 +24,16 @@ type Role = "wearable" | "dashboard" | "sim";
 interface ConnState {
   role: Role;
   version: 1 | 2;
+}
+
+interface TurnInput {
+  turnId: string;
+  audio?: AudioClip;
+  text?: string;
+  frame?: Frame;
+  poseT?: TrackerState["pose"];
+  /** the frame was taken when the question was asked and stands in for request_frame (HTTP clients have no socket to answer one) */
+  frameIsLive?: boolean;
 }
 
 const MAX_STEPS = 4;
@@ -43,6 +53,8 @@ export class TrackerAgent extends Agent<Env, TrackerState> {
   private readonly pendingFrames = new Map<string, (f: Frame | null) => void>();
   private readonly cancelled = new Set<string>();
   private activeTurn: string | null = null;
+  /** HTTP /api/query callers waiting for the turn's spoken reply, by turn id */
+  private readonly httpReplies = new Map<string, (r: { text: string; audio: AudioClip | null }) => void>();
 
   /** State is server-owned: clients talk to the agent through messages, never setState. */
   override validateStateChange(_next: TrackerState, source: Connection | "server") {
@@ -199,7 +211,8 @@ export class TrackerAgent extends Agent<Env, TrackerState> {
         return this.send(["dashboard", "sim"], { type: "notice", level: "info", message: `forgot ${String(r.forgotten)} object(s)` });
       }
       case "placement_candidate":
-        return this.onCandidate(m);
+        await this.onCandidate(m);
+        return;
       case "utterance":
         return this.startTurn({ turnId: m.turnId, audio: { b64: m.audioB64, mime: m.mime }, frame: m.frame, poseT: m.poseAtT });
       case "query":
@@ -211,10 +224,10 @@ export class TrackerAgent extends Agent<Env, TrackerState> {
 
   // ------------------------------------------------------------------ ingest
 
-  private async onCandidate(c: PlacementCandidate) {
+  private async onCandidate(c: PlacementCandidate): Promise<IntakeResult> {
     const r = intake(this.ingestDeps(), c);
     this.bumpStats(r.accepted, r.accepted ? undefined : r.reason);
-    if (!r.accepted) return;
+    if (!r.accepted) return r;
     try {
       await this.runWorkflow("INGEST_WORKFLOW", { candidateId: r.candidateId });
     } catch (e) {
@@ -225,6 +238,70 @@ export class TrackerAgent extends Agent<Env, TrackerState> {
       const sum = await this.ingestReconcile(r.candidateId);
       await this.ingestNotify(r.candidateId, ex.skipped, sum);
     }
+    return r;
+  }
+
+  // ------------------------------------------------------------------ HTTP API (called by the gateway, see http.ts)
+
+  /**
+   * POST /api/ingest. Same guards and workflow as a WebSocket placement_candidate. `waitMs` > 0 holds the response until
+   * the candidate is reconciled (or the wait runs out) so a client can show what was logged.
+   */
+  async httpIngest(c: PlacementCandidate, waitMs = 0): Promise<{ accepted: boolean; candidateId?: string; reason?: string; detail?: string; status?: string; objects?: ObjectRow[] }> {
+    const r = await this.onCandidate(c);
+    if (!r.accepted) return { accepted: false, reason: r.reason, detail: r.detail };
+    const deadline = this.now() + Math.min(Math.max(waitMs, 0), 25_000);
+    let cand = this.ledger.getCandidate(r.candidateId);
+    while (waitMs > 0 && cand && cand.status !== "done" && cand.status !== "failed" && this.now() < deadline) {
+      await new Promise((res) => setTimeout(res, 250));
+      cand = this.ledger.getCandidate(r.candidateId);
+    }
+    const ids = ((cand?.result as { summary?: ReconcileSummary } | null)?.summary?.objectIds) ?? [];
+    const objects = ids.map((id) => this.ledger.getObject(id)).filter((o) => o !== null).map((o) => this.ledger.toRow(o, this.name));
+    return { accepted: true, candidateId: r.candidateId, status: cand?.status ?? "queued", objects };
+  }
+
+  /**
+   * POST /api/query. Runs one agent turn and returns its spoken reply together with the HUD target the turn set. The client's
+   * pose (and frame, used as the live view for verify_visible) travel in the body because there is no WebSocket to carry them.
+   */
+  async httpQuery(q: HttpQuery): Promise<HttpQueryReply> {
+    const turnId = q.turnId ?? nid("q");
+    const startedAt = this.now();
+    if (q.poseAtT && q.poseAtT.t >= this.state.pose.t) {
+      this.ledger.logPose(q.poseAtT);
+      this.patch({ pose: q.poseAtT });
+    }
+    let out: { text: string; audio: AudioClip | null } | null = null;
+    this.httpReplies.set(turnId, (r) => (out = r));
+    try {
+      await this.startTurn({
+        turnId,
+        audio: q.audioB64 ? { b64: q.audioB64, mime: q.mime ?? "audio/wav" } : undefined,
+        text: q.text,
+        frame: q.frame,
+        poseT: q.poseAtT,
+        frameIsLive: true,
+      });
+    } finally {
+      this.httpReplies.delete(turnId);
+    }
+    const reply = out as { text: string; audio: AudioClip | null } | null;
+    const target = this.state.target && this.state.target.setAt >= startedAt ? this.state.target : null;
+    return { turnId, addressed: reply !== null, text: reply?.text ?? "", audioB64: reply?.audio?.b64, mime: reply?.audio?.mime, target };
+  }
+
+  /** GET /api/memory: what the agent currently remembers (the plan's "debug endpoint"). */
+  async getMemory() {
+    return {
+      device: this.name,
+      objects: this.ledger.listObjects().map((o) => this.ledger.toRow(o, this.name)),
+      pose: this.state.pose,
+      target: this.state.target,
+      ingest: this.state.ingest,
+      budget: this.state.budget,
+      traces: this.ledger.recentTraces(40),
+    };
   }
 
   // RPC entry points called by IngestPlacementWorkflow (each idempotent, small JSON in/out)
@@ -312,7 +389,7 @@ export class TrackerAgent extends Agent<Env, TrackerState> {
     return `Current zone: ${zone}.${tgt}\nRecent objects:\n${recent.join("\n") || "(none yet)"}`;
   }
 
-  private async startTurn(t: { turnId: string; audio?: AudioClip; text?: string; frame?: Frame; poseT?: TrackerState["pose"] }) {
+  private async startTurn(t: TurnInput) {
     if (this.activeTurn && this.activeTurn !== t.turnId) this.cancelled.add(this.activeTurn); // barge-in
     this.activeTurn = t.turnId;
     this.cancelled.delete(t.turnId);
@@ -329,7 +406,7 @@ export class TrackerAgent extends Agent<Env, TrackerState> {
     }
   }
 
-  private async runTurn(t: { turnId: string; audio?: AudioClip; text?: string; frame?: Frame; poseT?: TrackerState["pose"] }) {
+  private async runTurn(t: TurnInput) {
     const history: HistoryItem[] = [];
     const pend = this.ledger.getKv<{ question: string; transcript: string; t: number }>("clarify");
     if (pend && this.now() - pend.t < CLARIFY_TTL_MS) {
@@ -338,6 +415,10 @@ export class TrackerAgent extends Agent<Env, TrackerState> {
     this.ledger.setKv("clarify", null);
 
     const host = this.toolHost();
+    if (t.frameIsLive && t.frame?.jpegBase64) {
+      const live = t.frame;
+      host.requestFrame = () => Promise.resolve(live);
+    }
     const latestFrame = t.frame?.jpegBase64 ? { b64: t.frame.jpegBase64 } : undefined;
 
     for (let step = 0; step < MAX_STEPS; step++) {
@@ -393,6 +474,7 @@ export class TrackerAgent extends Agent<Env, TrackerState> {
     if (this.cancelled.has(turnId)) return;
     this.emitTrace({ turnId, step: 99, kind: "final", tool: null, args: {}, result: { text, audio: Boolean(audio) }, latencyMs: null, costCad: 0 });
     this.send(["wearable", "sim"], { type: "speak", turnId, text, audioB64: audio?.b64, mime: audio?.mime });
+    this.httpReplies.get(turnId)?.({ text, audio });
     if (!this.hasRole("wearable")) this.patch({ status: "idle" }); // no phone to report playback end
   }
 }

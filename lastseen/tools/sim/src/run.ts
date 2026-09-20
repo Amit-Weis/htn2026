@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runScenario } from "./driver";
+import { runHttpSmoke } from "./http";
 import { ScenarioSchema } from "./scenario";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -84,10 +85,15 @@ async function main() {
       console.log(`${r.ok ? "PASS" : "FAIL"} ${basename(file)} (${((Date.now() - t0) / 1000).toFixed(1)} s, device ${r.device})\n`);
       if (!r.ok) failed++;
     }
+    // The HTTP API (what Unity uses) is checked whenever the whole suite runs.
+    if (flag("--all") || !files.length) {
+      if (!(await runHttpSmoke({ url, token, log: (s) => console.log(s) }))) failed++;
+    }
   } finally {
     stop?.();
   }
-  console.log(failed ? `${failed} scenario(s) FAILED` : `all ${targets.length} scenario(s) passed`);
+  const withHttp = flag("--all") || !files.length;
+  console.log(failed ? `${failed} check(s) FAILED` : `all ${targets.length} scenario(s)${withHttp ? " and the HTTP API" : ""} passed`);
   process.exit(failed ? 1 : 0);
 }
 

@@ -10,6 +10,7 @@
   "dependencies": {
     "@lastseen/shared": "workspace:*",
     "@lastseen/wearable": "workspace:*",
+    "jpeg-js": "^0.4.4",
     "zod": "^4.0.0"
   },
   "devDependencies": {

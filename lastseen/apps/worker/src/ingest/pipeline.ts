@@ -1,5 +1,5 @@
-import { distanceM, objectPosition, poseAt } from "@lastseen/shared";
-import type { Detection, PlacementCandidate, PlacementEvent, Pose, Trace } from "@lastseen/shared";
+import { distanceM, objectPosition, objectPositionFromDepth, poseAt } from "@lastseen/shared";
+import type { Detection, PlacementCandidate, PlacementEvent, Pose, PosSource, Trace } from "@lastseen/shared";
 import type { Ledger, ObjectRecord, BoxSource, FrameRecord } from "../ledger";
 import { nid } from "../ledger";
 import type { Embedder } from "../memory/embed";
@@ -10,6 +10,8 @@ import type { AudioClip, OmniClient } from "../omni/types";
 import { cropRect, shouldCrop } from "./crop";
 import type { Cropper } from "./crop";
 import { fetchDetections } from "./detector";
+import { decodeStereo, estimateDepth } from "./stereo";
+import type { StereoImage } from "./stereo";
 import { DEFAULT_GUARDS, EMPTY_GUARD, evaluateCandidate, omniCallsLeft, recordOmniCall } from "./guards";
 import type { DropReason, GuardConfig, GuardState } from "./guards";
 
@@ -29,6 +31,8 @@ export interface IngestConfig {
   sameObjectSimilarity: number;
   /** re-placing a compatible object within this radius is the same object even if the vector index lags */
   sameSpotMeters: number;
+  /** stereo depth defaults (a candidate may override baseline/swap). The baseline is a placeholder until measured. */
+  stereo: { baselineM: number; swap: boolean; maxDepthM: number };
 }
 
 export const DEFAULT_INGEST: IngestConfig = {
@@ -38,6 +42,7 @@ export const DEFAULT_INGEST: IngestConfig = {
   cropMargin: 0.25,
   sameObjectSimilarity: 0.85,
   sameSpotMeters: 1.5,
+  stereo: { baselineM: 0.06, swap: false, maxDepthM: 8 },
 };
 
 export interface IngestDeps {
@@ -56,6 +61,8 @@ export interface IngestDeps {
 
 /** DO SQLite rows are limited to 2 MB; a base64 still beyond this is dropped (it is only used for cropping). */
 export const MAX_STILL_B64_CHARS = 1_400_000;
+/** Same row limit for the side-by-side stereo JPEG (640x480 per eye is about 150 KB). */
+export const MAX_STEREO_B64_CHARS = 1_400_000;
 
 const GUARD_KEY = "guard";
 const trace = (deps: IngestDeps, candidateId: string, kind: Trace["kind"], tool: string | null, args: unknown, result: unknown, latencyMs: number | null = null, costCad = 0) =>
@@ -80,6 +87,7 @@ export function intake(deps: IngestDeps, c: PlacementCandidate): IntakeResult {
     hfovDeg: c.hfovDeg,
     poseSlice: c.poseSlice,
     hasNarration: Boolean(c.narrationAudioB64),
+    stereo: c.stereo ? { baselineM: c.stereo.baselineM ?? null, swap: c.stereo.swap ?? null } : null,
   });
   c.frames.forEach((f, i) => {
     if (!f.jpegBase64) return;
@@ -96,11 +104,21 @@ export function intake(deps: IngestDeps, c: PlacementCandidate): IntakeResult {
     }
   }
   if (c.narrationAudioB64) deps.ledger.putBlob(`narration:${id}`, c.narrationMime ?? "audio/wav", c.narrationAudioB64);
+  let stereoKept = false;
+  if (c.stereo?.jpegBase64) {
+    if (c.stereo.jpegBase64.length <= MAX_STEREO_B64_CHARS) {
+      deps.ledger.putBlob(`stereo:${id}`, "image/jpeg", c.stereo.jpegBase64);
+      stereoKept = true;
+    } else {
+      trace(deps, id, "ingest", "stereo_dropped", { chars: c.stereo.jpegBase64.length }, { reason: "stereo JPEG larger than the 2 MB row limit; send <= 640x480 per eye" });
+    }
+  }
 
   trace(deps, id, "ingest", "accepted", { trigger: c.trigger, t: c.t }, {
     frames: c.frames.length,
     detections: (c.detections ?? []).reduce((n, d) => n + d.length, 0),
     still: stillKept,
+    stereo: stereoKept,
   });
   return { accepted: true, candidateId: id };
 }
@@ -240,6 +258,46 @@ async function findSame(deps: IngestDeps, ev: PlacementEvent, pos: { x: number; 
   return null;
 }
 
+interface Located {
+  x: number;
+  y: number;
+  /** height relative to the camera (m, + up); null unless measured */
+  z: number | null;
+  posSource: PosSource;
+}
+
+/**
+ * Where the object is. With a stereo pair and a box, depth comes from block matching on the box centre and the position
+ * from the pinhole model. Otherwise (no pair, no box, or a failed match) it is OMNI's distance estimate along the bearing
+ * of the box centre, clipped to 0.3-3 m; a missing estimate falls back to the default range.
+ */
+function locate(
+  deps: IngestDeps,
+  id: string,
+  ev: PlacementEvent,
+  box: Box | null,
+  pose: Pose,
+  hfovDeg: number,
+  cx: number,
+  stereo: StereoImage | null,
+  stereoMeta: { baselineM?: number | null; swap?: boolean | null } | null | undefined,
+): Located {
+  if (stereo && box) {
+    const t0 = deps.now();
+    const baselineM = stereoMeta?.baselineM ?? deps.cfg.stereo.baselineM;
+    const r = estimateDepth(stereo, box, { hfovDeg, baselineM, swap: stereoMeta?.swap ?? deps.cfg.stereo.swap, maxDepthM: deps.cfg.stereo.maxDepthM });
+    if (r.ok) {
+      const cy = box[1] + box[3] / 2;
+      const p = objectPositionFromDepth(pose, pose.headingDeg, cx, cy, r.depthM, hfovDeg, r.halfWidth / r.height);
+      trace(deps, id, "ingest", "stereo", { label: ev.label, box, baselineM }, { ok: true, depthM: Number(r.depthM.toFixed(2)), disparityPx: Number(r.disparityPx.toFixed(2)), matchRatio: Number(r.ratio.toFixed(2)), heightM: Number(p.zUp.toFixed(2)) }, deps.now() - t0);
+      return { x: p.x, y: p.y, z: p.zUp, posSource: "stereo" };
+    }
+    trace(deps, id, "ingest", "stereo", { label: ev.label, box, baselineM }, { ok: false, reason: r.reason, note: "falling back to OMNI's distance" }, deps.now() - t0);
+  }
+  const p = objectPosition(pose, pose.headingDeg, cx, ev.distance_m, hfovDeg);
+  return { x: p.x, y: p.y, z: null, posSource: ev.distance_m != null && Number.isFinite(ev.distance_m) && ev.distance_m > 0 ? "omni" : "default" };
+}
+
 export interface ReconcileSummary {
   objectIds: string[];
   created: number;
@@ -263,11 +321,15 @@ export async function reconcile(deps: IngestDeps, id: string): Promise<Reconcile
   const pose = poseAt(meta.poseSlice ?? [], t) ?? deps.currentPose();
   const summary: ReconcileSummary = { ...empty, objectIds: [] };
   const keep: string[] = [];
+  const stereoBlob = ledger.getBlob(`stereo:${id}`);
+  const stereoImg = stereoBlob ? decodeStereo(stereoBlob.b64) : null;
+  if (stereoBlob && !stereoImg) trace(deps, id, "ingest", "stereo", {}, { ok: false, reason: "stereo JPEG could not be decoded; using OMNI's distance" });
+  const stereoMeta = (cand.meta as { stereo?: { baselineM?: number | null; swap?: boolean | null } | null }).stereo;
 
   for (const ev of events) {
     const { box, source } = chooseBox(ev, final?.detections);
     const cx = box ? box[0] + box[2] / 2 : 0.5;
-    const pos = objectPosition(pose, pose.headingDeg, cx, ev.distance_m, meta.hfovDeg ?? deps.cfg.defaultHfovDeg);
+    const pos = locate(deps, id, ev, box, pose, meta.hfovDeg ?? deps.cfg.defaultHfovDeg, cx, stereoImg, stereoMeta);
     let vec: number[] | null = null;
     try {
       vec = await deps.embedder.embed(textOf(ev));
@@ -299,14 +361,14 @@ export async function reconcile(deps: IngestDeps, id: string): Promise<Reconcile
       ledger.updateObject(same.id, {
         description: ev.description.length >= same.description.length ? ev.description : same.description,
         features: [...new Set([...same.features, ...ev.distinguishing_features])],
-        status: "placed", x: pos.x, y: pos.y, zone, lastSeenAt: t, confidence, frameId, box, boxSource: source,
+        status: "placed", x: pos.x, y: pos.y, zone, lastSeenAt: t, confidence, frameId, box, boxSource: source, z: pos.z, posSource: pos.posSource,
       });
       summary.updated++;
     } else {
       objectId = nid("o");
       ledger.createObject({
         id: objectId, label: ev.label, description: ev.description, features: ev.distinguishing_features, status: "placed",
-        x: pos.x, y: pos.y, zone, lastSeenAt: t, confidence, frameId, box, boxSource: source,
+        x: pos.x, y: pos.y, zone, lastSeenAt: t, confidence, frameId, box, boxSource: source, z: pos.z, posSource: pos.posSource,
       });
       summary.created++;
     }

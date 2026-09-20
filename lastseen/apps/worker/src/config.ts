@@ -18,6 +18,11 @@ export function ingestConfig(env: Env): IngestConfig {
     detectorSecret: env.DETECTOR_SECRET || undefined,
     cropMinPixels: num(env.CROP_MIN_PIXELS, DEFAULT_INGEST.cropMinPixels),
     cropMargin: DEFAULT_INGEST.cropMargin,
+    stereo: {
+      baselineM: num(env.STEREO_BASELINE_M, DEFAULT_INGEST.stereo.baselineM),
+      swap: env.STEREO_SWAP === "1",
+      maxDepthM: num(env.STEREO_MAX_DEPTH_M, DEFAULT_INGEST.stereo.maxDepthM),
+    },
     sameObjectSimilarity: DEFAULT_INGEST.sameObjectSimilarity,
     sameSpotMeters: DEFAULT_INGEST.sameSpotMeters,
   };
