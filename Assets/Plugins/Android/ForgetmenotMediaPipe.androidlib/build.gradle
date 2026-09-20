@@ -1,0 +1,14 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.forgetmenot.cv'
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 24
+    }
+}
+
+dependencies {
+    implementation 'com.google.mediapipe:tasks-vision:1.0.0'
+}

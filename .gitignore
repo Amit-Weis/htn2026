@@ -113,3 +113,6 @@ node_modules/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Downloaded ML model copied into the Android library by forgetmenot_cv/download_model.py.
+Assets/Plugins/Android/ForgetmenotMediaPipe.androidlib/src/main/assets/*.tflite
