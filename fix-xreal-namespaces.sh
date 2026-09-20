@@ -6,9 +6,6 @@
 #     Namespace 'nrsdk.pack' is used in multiple modules and/or libraries
 #
 # The XREAL UPM package ships several AARs that all declare package="nrsdk.pack".
-# AGP 8 promotes that attribute to the module namespace and requires uniqueness,
-# so the merge fails before it starts.
-#
 # This script:
 #   1. locates the XREAL package (embedded, local file:, or PackageCache)
 #   2. embeds it under Packages/ so edits survive package re-resolution
