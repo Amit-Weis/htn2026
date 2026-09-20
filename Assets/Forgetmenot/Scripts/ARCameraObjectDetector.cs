@@ -14,7 +14,7 @@ namespace Forgetmenot
     public class ARCameraObjectDetector : MonoBehaviour
     {
         [SerializeField] ARCameraManager m_CameraManager;
-        [SerializeField] string m_TargetClass = "cell phone";
+        [SerializeField] string m_TargetClass = "hacker_card";
         [SerializeField, Range(0.05f, 1f)] float m_ScoreThreshold = 0.3f;
         [SerializeField, Min(0.1f)] float m_InferenceIntervalSeconds = 0.4f;
         [SerializeField] bool m_StopAfterFirstMatch = true;

@@ -1,12 +1,12 @@
 # Forgetmenot Unity integration
 
-This folder connects an AR Foundation camera frame to MediaPipe Object Detector on Android, then converts the selected detection into an XREAL anchor and navigation target.
+This folder connects an AR Foundation camera frame to the custom hacker-card detector on Android, then converts the selected detection into an XREAL anchor and navigation target.
 
 ## What is implemented
 
 1. `ARCameraObjectDetector` acquires an `XRCpuImage`, converts it to RGBA, and throttles inference.
 2. `AndroidMediaPipeDetector` calls the bundled Android library.
-3. The Android library runs MediaPipe Object Detector with EfficientDet-Lite0 on CPU and returns JSON.
+3. The Android library runs the custom YOLO ONNX model on CPU and returns JSON.
 4. `DetectionAnchorController` samples five points inside the best bounding box, raycasts against a depth-mesh collider or AR plane, and anchors the median hit.
 5. `AnchorNavigationGuide` points an assigned indicator toward the anchor and displays distance.
 6. Detection stops after the first successful model match by default. `SearchAgain()` resumes it.
@@ -16,11 +16,10 @@ This folder connects an AR Foundation camera frame to MediaPipe Object Detector 
 From the repository root:
 
 ```bash
-source forgetmenot_cv/.venv/bin/activate
-python forgetmenot_cv/download_model.py --android
+python forgetmenot_cv/training/deploy_model.py forgetmenot_cv/training/runs/hacker_card/weights/best.onnx
 ```
 
-The downloaded `.tflite` file is intentionally ignored by Git. Every developer and CI build must run this command before making an Android build.
+The generated `.onnx` file is intentionally ignored by Git. Every developer and CI build must run this command before making an Android build.
 
 ## One-time scene wiring in Unity
 
@@ -44,8 +43,8 @@ On the existing XR Origin:
 
 - Camera permission is declared by the embedded Android library.
 - Minimum Android SDK is 24.
-- The library resolves `com.google.mediapipe:tasks-vision:1.0.0` from Google's Maven repository.
-- `efficientdet_lite0.tflite` must exist in the Android library assets directory.
+- The library resolves `com.microsoft.onnxruntime:onnxruntime-android:1.20.0` from Maven Central.
+- `hacker_card.onnx` must exist in the Android library assets directory.
 
 ## Device caveats
 

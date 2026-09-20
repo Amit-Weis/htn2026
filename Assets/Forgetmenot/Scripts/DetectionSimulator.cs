@@ -5,7 +5,7 @@ namespace Forgetmenot
     public class DetectionSimulator : MonoBehaviour
     {
         [SerializeField] DetectionAnchorController m_AnchorController;
-        [SerializeField] string m_ClassName = "cell phone";
+        [SerializeField] string m_ClassName = "hacker_card";
         [SerializeField, Range(0f, 1f)] float m_Confidence = 0.93f;
 
         [ContextMenu("Simulate Center Detection")]
