@@ -4,21 +4,27 @@ using UnityEngine;
 namespace Forgetmenot
 {
     /// <summary>
-    /// Places a world object (TotemFloatingTorus) where the card was last seen.
+    /// Places a world object (TotemFloatingTorus) where the card was seen.
+    ///
+    /// Two placement modes:
+    ///
+    ///   * Fixed (useFixedPlacement, the default). The depth estimate from the
+    ///     known-size model never agreed with reality, so this mode ignores it.
+    ///     On the first accepted sighting the totem is dropped a fixed distance
+    ///     straight ahead of the head, at table height, and then latched. No ray,
+    ///     no FOV, no distance constant.
+    ///
+    ///   * Projected (useFixedPlacement off). The original pipeline:
+    ///       bbox centre -> normalised image coords -> ray in phone-camera space
+    ///       -> scale by distance -> phone space point -> head space -> world space,
+    ///     using the head rotation as it was when the frame was captured, not as it
+    ///     is now (inference takes ~100 ms and the user is turning).
     ///
     /// Assumptions, all of which come straight from the rig:
     ///   * the user rotates but does not walk, so orientation is the only thing
     ///     that has to be tracked between the sighting and now;
     ///   * the phone is strapped to the headset at a fixed offset, so the phone
-    ///     camera pose is headPose * mountOffset;
-    ///   * the detector reports a range in metres (distance_m), or the known-size
-    ///     constant below lets us compute one.
-    ///
-    /// Pipeline per detection:
-    ///   bbox centre -> normalised image coords -> ray in phone-camera space
-    ///   -> scale by distance -> phone space point -> head space -> world space,
-    ///   using the head rotation as it was when the frame was captured, not as it
-    ///   is now (inference takes ~100 ms and the user is turning).
+    ///     camera pose is headPose * mountOffset.
     /// </summary>
     public sealed class LastSeenAnchor : MonoBehaviour
     {
@@ -39,19 +45,30 @@ namespace Forgetmenot
         [SerializeField] Transform totem;
         [SerializeField] bool detachTotemOnStart = true;
 
+        [Header("Fixed placement")]
+        [Tooltip("Skip the depth math entirely: drop the totem a fixed distance ahead on first sighting.")]
+        [SerializeField] bool useFixedPlacement = true;
+        [Tooltip("Metres ahead of the head, measured horizontally (the head's pitch is ignored).")]
+        [SerializeField, Min(0.05f)] float fixedForwardMeters = 0.5f;
+        [Tooltip("Metres below eye level. ~0.5 puts it near table height for a seated user.")]
+        [SerializeField] float dropBelowEyesMeters = 0.5f;
+        [Tooltip("Once placed, never move it again, however many more sightings arrive.")]
+        [SerializeField] bool latchFirstPlacement = true;
+
         [Header("Head pose")]
+        [Tooltip("Used by the projected path only. Fixed placement always reads the live camera transform.")]
         [SerializeField] PoseSource poseSource = PoseSource.XrCamera;
         [Tooltip("Seconds between frame capture and this callback. The pose is rewound by this much.")]
         [SerializeField, Range(0f, 0.5f)] float captureLatencySeconds = 0.12f;
         [SerializeField, Min(8)] int poseHistorySize = 180;
 
-        [Header("Phone mount, relative to the head camera")]
+        [Header("Phone mount, relative to the head camera (projected path only)")]
         [Tooltip("Where the phone camera lens sits. -Y is below the eyes, +Z is forward, metres.")]
         [SerializeField] Vector3 mountLocalPosition = Vector3.zero;
         [Tooltip("How the phone camera is aimed on the mount. X = pitch, positive is nose-down.")]
         [SerializeField] Vector3 mountLocalEuler = Vector3.zero;
 
-        [Header("Phone camera")]
+        [Header("Phone camera (projected path only)")]
         [Tooltip("Horizontal FOV of the phone camera in degrees. Tune until the totem lands on the card.")]
         [SerializeField, Range(20f, 120f)] float horizontalFovDegrees = 66f;
         [Tooltip("Rotation the detector image needs to become upright in camera space.")]
@@ -67,16 +84,17 @@ namespace Forgetmenot
 
         [Header("Detection filtering")]
         [SerializeField, Range(0.05f, 1f)] float minConfidence = 0.3f;
-        [Tooltip("Used only when the detector sends no distance_m. From hacker_card_distance.json.")]
+        [Tooltip("Projected path only. Used when the detector sends no distance_m. From hacker_card_distance.json.")]
         [SerializeField] float normalizedWidthDistanceConstant = 0.033f;
+        [Tooltip("Projected path only.")]
         [SerializeField] Vector2 distanceClampMeters = new Vector2(0.2f, 8f);
-        [Tooltip("0 snaps to every new sighting, 0.9 is heavy smoothing.")]
+        [Tooltip("Projected path only. 0 snaps to every new sighting, 0.9 is heavy smoothing.")]
         [SerializeField, Range(0f, 0.95f)] float positionSmoothing = 0.4f;
-        [Tooltip("A sighting after this long re-snaps instead of smoothing.")]
+        [Tooltip("Projected path only. A sighting after this long re-snaps instead of smoothing.")]
         [SerializeField, Min(0.1f)] float resnapAfterSeconds = 1.5f;
 
         [Header("Debug")]
-        [Tooltip("Logs the full ray, distance and world position for every accepted sighting.")]
+        [Tooltip("Logs the placement decision for every accepted sighting.")]
         [SerializeField] bool logPlacement;
 
         struct PoseSample
@@ -108,7 +126,8 @@ namespace Forgetmenot
             if (headCamera == null)
                 Debug.LogError("[LastSeenAnchor] No head camera. Every placement will be wrong.", this);
 
-            if (poseSource == PoseSource.DeviceGyro && SystemInfo.supportsGyroscope)
+            // The gyro is only ever consumed by the projected path.
+            if (!useFixedPlacement && poseSource == PoseSource.DeviceGyro && SystemInfo.supportsGyroscope)
                 Input.gyro.enabled = true;
         }
 
@@ -126,6 +145,7 @@ namespace Forgetmenot
 
         void LateUpdate()
         {
+            if (useFixedPlacement) return; // nothing reads the history in this mode
             RecordPose();
         }
 
@@ -191,10 +211,10 @@ namespace Forgetmenot
             if (frame == null || frame.image_width <= 0 || frame.image_height <= 0)
                 return;
 
-            frame.FillMissingDistances(normalizedWidthDistanceConstant);
-
+            // Confidence is the only gate in fixed mode. The projected path adds a
+            // HasDistance requirement of its own below.
             DetectionResult best = frame.detections?
-                .Where(item => item != null && item.confidence >= minConfidence && item.HasDistance)
+                .Where(item => item != null && item.confidence >= minConfidence)
                 .OrderByDescending(item => item.confidence)
                 .FirstOrDefault();
 
@@ -205,27 +225,50 @@ namespace Forgetmenot
                     DetectionResult any = frame.detections?
                         .OrderByDescending(item => item.confidence).FirstOrDefault();
                     Debug.Log($"[Anchor] rejected n={frame.detections?.Length ?? 0} " +
-                              $"conf={any?.confidence ?? -1f:0.00} (min {minConfidence}) " +
-                              $"dist={any?.distance_m ?? -1f:0.00} k={normalizedWidthDistanceConstant}", this);
+                              $"conf={any?.confidence ?? -1f:0.00} (min {minConfidence})", this);
                 }
                 return;
             }
 
-            float distance = Mathf.Clamp(best.distance_m, distanceClampMeters.x, distanceClampMeters.y);
+            // Seen counts even when the placement is latched, so RevealOnFirstSighting
+            // and SecondsSinceSeen keep behaving the way they always did.
+            lastSeenTime = Time.unscaledTime;
 
-            if (!TryGetPoseAt(Time.unscaledTime - captureLatencySeconds, out PoseSample pose))
-                return;
+            if (useFixedPlacement)
+            {
+                if (hasAnchor && latchFirstPlacement)
+                {
+                    if (logPlacement)
+                        Debug.Log($"[Anchor] latched, ignoring sighting conf={best.confidence:0.00}", this);
+                    return;
+                }
 
-            Vector3 world = ToWorld(best, frame, distance, pose);
+                anchorPosition = FixedPlacement();
+                lastDistance = fixedForwardMeters;
+            }
+            else
+            {
+                frame.FillMissingDistances(normalizedWidthDistanceConstant);
 
-            bool snap = !hasAnchor || SecondsSinceSeen > resnapAfterSeconds;
-            anchorPosition = snap
-                ? world
-                : Vector3.Lerp(world, anchorPosition, positionSmoothing);
+                if (!best.HasDistance)
+                    return;
+
+                float distance = Mathf.Clamp(best.distance_m, distanceClampMeters.x, distanceClampMeters.y);
+
+                if (!TryGetPoseAt(Time.unscaledTime - captureLatencySeconds, out PoseSample pose))
+                    return;
+
+                Vector3 world = ToWorld(best, frame, distance, pose);
+
+                bool snap = !hasAnchor || SecondsSinceSeen > resnapAfterSeconds;
+                anchorPosition = snap
+                    ? world
+                    : Vector3.Lerp(world, anchorPosition, positionSmoothing);
+
+                lastDistance = distance;
+            }
 
             hasAnchor = true;
-            lastSeenTime = Time.unscaledTime;
-            lastDistance = distance;
 
             if (totem != null)
             {
@@ -233,6 +276,40 @@ namespace Forgetmenot
                 if (!totem.gameObject.activeSelf)
                     totem.gameObject.SetActive(true);
             }
+        }
+
+        /// <summary>
+        /// A fixed point ahead of the head at table height. Reads the live camera
+        /// transform rather than the pose history on purpose: the history can be
+        /// gyro-derived, whose yaw is anchored to magnetic north rather than to the
+        /// scene, which would scatter the totem to an arbitrary compass bearing.
+        /// Capture latency does not matter either, because there is no ray to
+        /// reconstruct — only "roughly where the user is facing".
+        /// </summary>
+        Vector3 FixedPlacement()
+        {
+            Transform head = headCamera != null ? headCamera.transform : transform;
+
+            // Flatten the forward so looking down at the card does not bury the
+            // totem in the floor, or looking up float it away.
+            Vector3 forward = head.forward;
+            forward.y = 0f;
+            forward = forward.sqrMagnitude < 1e-6f
+                ? Vector3.forward
+                : forward.normalized;
+
+            Vector3 world = head.position
+                          + forward * fixedForwardMeters
+                          - Vector3.up * dropBelowEyesMeters;
+
+            if (logPlacement)
+            {
+                Debug.Log($"[Anchor] fixed placement world={world} " +
+                          $"head={head.position} fwd={forward} " +
+                          $"ahead={fixedForwardMeters:0.00} drop={dropBelowEyesMeters:0.00}", this);
+            }
+
+            return world;
         }
 
         Vector3 ToWorld(DetectionResult detection, DetectionFrameResult frame,
@@ -289,6 +366,7 @@ namespace Forgetmenot
 
         // ------------------------------------------------------------------- utility
 
+        /// <summary>Forget the placement. In fixed mode this also releases the latch.</summary>
         public void ClearAnchor()
         {
             hasAnchor = false;
