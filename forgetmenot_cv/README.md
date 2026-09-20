@@ -131,12 +131,12 @@ python training/train_yolo.py
 Export the selected checkpoint to ONNX, install it for Android/Unity, and build:
 
 ```bash
-python -c 'from ultralytics import YOLO; YOLO("training/runs/hacker_card/weights/best.pt").export(format="onnx", imgsz=320, simplify=False)'
+python -c 'from ultralytics import YOLO; YOLO("training/runs/hacker_card/weights/best.pt").export(format="onnx", imgsz=640, simplify=False)'
 python training/deploy_model.py
 cd ../android_detector_test && ./gradlew :app:assembleDebug
 ```
 
-The Android adapter letterboxes RGBA input to 320x320, runs ONNX Runtime,
+The Android adapter letterboxes RGBA input to 640x640, runs ONNX Runtime,
 decodes the YOLO output, applies NMS, and preserves the existing JSON contract.
 Pass `hacker_card` as the target class.
 

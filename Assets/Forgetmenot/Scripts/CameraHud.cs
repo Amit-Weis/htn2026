@@ -32,8 +32,8 @@ namespace Forgetmenot
         [SerializeField] string targetClass = "hacker_card";
         [SerializeField, Range(0.05f, 1f)] float scoreThreshold = 0.3f;
         [SerializeField, Min(0.05f)] float inferenceIntervalSeconds = 0.2f;
-        [Tooltip("Longest edge sent to the model. 320 matches its input size.")]
-        [SerializeField, Min(128)] int inferenceMaxEdge = 320;
+        [Tooltip("Longest edge sent to the model. 640 matches its input size.")]
+        [SerializeField, Min(128)] int inferenceMaxEdge = 640;
 
         [Header("Layout")]
         [SerializeField, Min(0.3f)] float distance = 1.5f;

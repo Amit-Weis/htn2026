@@ -155,7 +155,7 @@ MonoBehaviour:
   targetClass: hacker_card
   scoreThreshold: 0.3
   inferenceIntervalSeconds: 0.2
-  inferenceMaxEdge: 320
+  inferenceMaxEdge: 640
   distance: 1.5
   heightFrac: 0.25
   margin: 0.08
