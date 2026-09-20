@@ -4,15 +4,18 @@ using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
-using Unity.XR.XREAL;
+using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
 
 namespace Forgetmenot
 {
     [Serializable]
     public sealed class DetectionFrameEvent : UnityEvent<DetectionFrameResult> { }
 
+    [RequireComponent(typeof(ARCameraManager))]
     public sealed class PhoneObjectDetector : MonoBehaviour
     {
+        [SerializeField] ARCameraManager m_CameraManager;
         [SerializeField] string m_TargetClass = "cell phone";
         [SerializeField, Range(0.05f, 1f)] float m_ScoreThreshold = 0.3f;
         [SerializeField, Min(0.1f)] float m_InferenceIntervalSeconds = 0.5f;
@@ -23,7 +26,6 @@ namespace Forgetmenot
         [SerializeField] DetectionFrameEvent m_OnDetections = new();
 
         AndroidMediaPipeDetector m_Detector;
-        XREALRGBCameraTexture m_RgbCamera;
         float m_NextInferenceTime;
         float m_NextFrameLogTime;
         Texture2D m_PreviewTexture;
@@ -35,6 +37,7 @@ namespace Forgetmenot
         void OnEnable()
         {
             SetStatus("Starting Beam Pro camera...");
+            m_CameraManager ??= GetComponent<ARCameraManager>();
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(
                     UnityEngine.Android.Permission.Camera))
@@ -44,10 +47,8 @@ namespace Forgetmenot
             try
             {
                 m_Detector = new AndroidMediaPipeDetector(m_ScoreThreshold);
-                m_RgbCamera = XREALRGBCameraTexture.CreateSingleton();
-                m_RgbCamera.OnRGBCameraUpdate += OnCameraFrame;
-                bool started = m_RgbCamera.StartCapture();
-                SetStatus(started ? "Beam Pro camera started" : "Beam Pro camera failed to start");
+                m_CameraManager.frameReceived += OnCameraFrame;
+                SetStatus("Beam Pro camera requested through AR Foundation");
             }
             catch (Exception exception)
             {
@@ -58,11 +59,8 @@ namespace Forgetmenot
 
         void OnDisable()
         {
-            if (m_RgbCamera != null)
-            {
-                m_RgbCamera.OnRGBCameraUpdate -= OnCameraFrame;
-                m_RgbCamera.StopCapture();
-            }
+            if (m_CameraManager != null)
+                m_CameraManager.frameReceived -= OnCameraFrame;
             m_Detector?.Dispose();
             m_Detector = null;
             if (m_PreviewTexture != null)
@@ -77,81 +75,61 @@ namespace Forgetmenot
             }
         }
 
-        void OnCameraFrame()
+        void OnCameraFrame(ARCameraFrameEventArgs _)
         {
             if (m_Detector == null || Time.unscaledTime < m_NextInferenceTime)
                 return;
 
             m_NextInferenceTime = Time.unscaledTime + m_InferenceIntervalSeconds;
-            Vector2Int resolution = m_RgbCamera.GetResolution();
-            Texture2D[] yuv = m_RgbCamera.GetYUVFormatTextures();
-            if (resolution.x <= 0 || resolution.y <= 0 || yuv.Length < 3 ||
-                yuv[0] == null || yuv[1] == null || yuv[2] == null)
+            if (!m_CameraManager.TryAcquireLatestCpuImage(out XRCpuImage image))
             {
-                Debug.LogWarning("XREAL RGB camera has no frame available.", this);
+                Debug.LogWarning("ARCameraManager has no Beam Pro CPU image available.", this);
                 SetStatus("Waiting for Beam Pro camera frame...");
                 return;
             }
 
-            if (m_LogCameraFrames && Time.unscaledTime >= m_NextFrameLogTime)
+            using (image)
             {
-                m_NextFrameLogTime = Time.unscaledTime + m_FrameLogIntervalSeconds;
-                Debug.Log($"[PhoneObjectDetector] Beam Pro RGB frame received: {resolution.x}x{resolution.y}", this);
-                SetStatus($"Camera OK: {resolution.x}x{resolution.y}");
-            }
-
-            try
-            {
-                UpdateYuvPreview(yuv[0], yuv[1], yuv[2]);
-                byte[] rgba = ConvertYuvToRgba(yuv[0], yuv[1], yuv[2], resolution.x, resolution.y);
-                DetectionFrameResult result = m_Detector.Detect(
-                    rgba, resolution.x, resolution.y, m_TargetClass);
-                m_OnDetections.Invoke(result);
-
-                DetectionResult best = result.detections
-                    .OrderByDescending(item => item.confidence)
-                    .FirstOrDefault();
-                if (best != null)
+                if (m_LogCameraFrames && Time.unscaledTime >= m_NextFrameLogTime)
                 {
-                    Debug.Log($"Detected {best.class_name} ({best.confidence:0.00})", this);
-                    SetStatus($"Detected {best.class_name} ({best.confidence:0.00})");
+                    m_NextFrameLogTime = Time.unscaledTime + m_FrameLogIntervalSeconds;
+                    Debug.Log($"[PhoneObjectDetector] Beam Pro RGB frame received: {image.width}x{image.height}", this);
+                    SetStatus($"Camera OK: {image.width}x{image.height}");
+                }
+
+                try
+                {
+                    var conversion = new XRCpuImage.ConversionParams
+                    {
+                        inputRect = new RectInt(0, 0, image.width, image.height),
+                        outputDimensions = new Vector2Int(image.width, image.height),
+                        outputFormat = TextureFormat.RGBA32,
+                        transformation = XRCpuImage.Transformation.None
+                    };
+                    int size = image.GetConvertedDataSize(conversion);
+                    using var rgba = new NativeArray<byte>(size, Allocator.Temp);
+                    image.Convert(conversion, rgba);
+                    byte[] bytes = rgba.ToArray();
+                    UpdatePreview(bytes, image.width, image.height);
+                    DetectionFrameResult result = m_Detector.Detect(
+                        bytes, image.width, image.height, m_TargetClass);
+                    m_OnDetections.Invoke(result);
+
+                    DetectionResult best = result.detections
+                        .OrderByDescending(item => item.confidence)
+                        .FirstOrDefault();
+                    if (best != null)
+                    {
+                        Debug.Log($"Detected {best.class_name} ({best.confidence:0.00})", this);
+                        SetStatus($"Detected {best.class_name} ({best.confidence:0.00})");
+                    }
+                }
+                catch (Exception exception)
+                {
+                    SetStatus($"ERROR: {exception.GetType().Name}");
+                    Debug.LogException(exception, this);
                 }
             }
-            catch (Exception exception)
-            {
-                SetStatus($"ERROR: {exception.GetType().Name}");
-                Debug.LogException(exception, this);
-            }
-        }
-
-        static byte[] ConvertYuvToRgba(Texture2D yTexture, Texture2D uTexture,
-            Texture2D vTexture, int width, int height)
-        {
-            Color32[] yPixels = yTexture.GetPixels32();
-            Color32[] uPixels = uTexture.GetPixels32();
-            Color32[] vPixels = vTexture.GetPixels32();
-            byte[] rgba = new byte[width * height * 4];
-
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    int yIndex = y * width + x;
-                    int uvIndex = (y / 2) * (width / 2) + (x / 2);
-                    float luma = yPixels[yIndex].a * 255f;
-                    float u = uPixels[uvIndex].a * 255f - 128f;
-                    float v = vPixels[uvIndex].a * 255f - 128f;
-                    int red = Mathf.Clamp(Mathf.RoundToInt(luma + 1.402f * v), 0, 255);
-                    int green = Mathf.Clamp(Mathf.RoundToInt(luma - 0.344136f * u - 0.714136f * v), 0, 255);
-                    int blue = Mathf.Clamp(Mathf.RoundToInt(luma + 1.772f * u), 0, 255);
-                    int offset = yIndex * 4;
-                    rgba[offset] = (byte)red;
-                    rgba[offset + 1] = (byte)green;
-                    rgba[offset + 2] = (byte)blue;
-                    rgba[offset + 3] = 255;
-                }
-            }
-            return rgba;
         }
 
         void UpdatePreview(byte[] rgba, int width, int height)
@@ -172,33 +150,6 @@ namespace Forgetmenot
 
             m_PreviewTexture.LoadRawTextureData(rgba);
             m_PreviewTexture.Apply(false);
-        }
-
-        void UpdateYuvPreview(Texture2D yTexture, Texture2D uTexture, Texture2D vTexture)
-        {
-            if (m_CameraPreview == null)
-                return;
-
-            if (m_PreviewMaterial == null)
-            {
-                Shader shader = Shader.Find("XREALSDK/CaptureBackgroundYUV");
-                if (shader == null)
-                {
-                    Debug.LogError("Could not find XREAL YUV preview shader.", this);
-                    SetStatus("ERROR: XREAL YUV shader missing");
-                    return;
-                }
-
-                m_PreviewMaterial = new Material(shader)
-                {
-                    name = "Beam Pro Camera Preview Material"
-                };
-                m_CameraPreview.material = m_PreviewMaterial;
-            }
-
-            m_CameraPreview.texture = yTexture;
-            m_PreviewMaterial.SetTexture("_UTex", uTexture);
-            m_PreviewMaterial.SetTexture("_VTex", vTexture);
         }
 
         void SetStatus(string message)
