@@ -30,18 +30,41 @@ import java.util.Map;
 public final class MediaPipeDetector {
     private static final String MODEL_ASSET = "hacker_card.onnx";
     private static final String LABEL = "hacker_card";
-    private static final int INPUT_SIZE = 320;
+    private static final int INPUT_SIZE = 640;
     private static final float NMS_IOU_THRESHOLD = 0.45f;
+
+    /**
+     * Known-size range model, matching KnownSizeDistanceEstimator on the Python side:
+     *
+     *     distance_m = constant / (boxWidthPx / imageWidthPx)
+     *
+     * The constant is normalized_width_distance_constant from the calibration JSON,
+     * i.e. referenceDistance * boxWidth / frameWidth at a measured distance. Because
+     * the width is normalised this is resolution independent, so the downscaled
+     * inference frame gives the same answer as a full-resolution one. It is NOT FOV
+     * independent: recalibrate whenever the camera changes.
+     *
+     * This value is the fallback used by the two-argument constructor. Zero or less
+     * disables the distance_m field entirely, which leaves the JSON contract exactly
+     * as it was before.
+     */
+    private static final float DEFAULT_DISTANCE_CONSTANT = 0f;
 
     private final OrtEnvironment environment;
     private final OrtSession session;
     private final String inputName;
     private final float scoreThreshold;
+    private final float distanceConstant;
 
     public MediaPipeDetector(Context context, float scoreThreshold) {
+        this(context, scoreThreshold, DEFAULT_DISTANCE_CONSTANT);
+    }
+
+    public MediaPipeDetector(Context context, float scoreThreshold, float distanceConstant) {
         if (scoreThreshold < 0f || scoreThreshold > 1f)
             throw new IllegalArgumentException("scoreThreshold must be between 0 and 1");
         this.scoreThreshold = scoreThreshold;
+        this.distanceConstant = distanceConstant;
         try (InputStream stream = context.getAssets().open(MODEL_ASSET)) {
             environment = OrtEnvironment.getEnvironment();
             OrtSession.SessionOptions options = new OrtSession.SessionOptions();
@@ -52,6 +75,11 @@ public final class MediaPipeDetector {
         } catch (IOException | OrtException exception) {
             throw new IllegalStateException("Could not load " + MODEL_ASSET, exception);
         }
+    }
+
+    /** The calibration constant in force, so Unity can log what it is actually running with. */
+    public float getDistanceConstant() {
+        return distanceConstant;
     }
 
     public String detectRgba(byte[] rgba, int width, int height, String targetClass) {
@@ -153,12 +181,12 @@ public final class MediaPipeDetector {
         return input;
     }
 
-    private static String emptyJson(int width, int height, long frameId, long timestampMs,
+    private String emptyJson(int width, int height, long frameId, long timestampMs,
             int rotationDegrees, boolean mirrored) {
         return toJson(new ArrayList<>(), width, height, frameId, timestampMs, rotationDegrees, mirrored);
     }
 
-    private static String toJson(List<Candidate> detections, int width, int height, long frameId,
+    private String toJson(List<Candidate> detections, int width, int height, long frameId,
             long timestampMs, int rotationDegrees, boolean mirrored) {
         try {
             JSONObject root = new JSONObject();
@@ -169,9 +197,17 @@ public final class MediaPipeDetector {
             for (Candidate detection : detections) {
                 int x1 = Math.round(detection.box.left), y1 = Math.round(detection.box.top);
                 int x2 = Math.round(detection.box.right), y2 = Math.round(detection.box.bottom);
-                output.put(new JSONObject().put("class_name", LABEL).put("confidence", detection.score)
+                JSONObject item = new JSONObject()
+                        .put("class_name", LABEL)
+                        .put("confidence", detection.score)
                         .put("bbox", new JSONObject().put("x1", x1).put("y1", y1).put("x2", x2).put("y2", y2))
-                        .put("center", new JSONObject().put("x", (x1 + x2) / 2).put("y", (y1 + y2) / 2)));
+                        .put("center", new JSONObject().put("x", (x1 + x2) / 2).put("y", (y1 + y2) / 2));
+
+                float normalizedWidth = (x2 - x1) / (float) width;
+                if (distanceConstant > 0f && normalizedWidth > 0f)
+                    item.put("distance_m", distanceConstant / normalizedWidth);
+
+                output.put(item);
             }
             return root.put("detections", output).toString();
         } catch (JSONException exception) {

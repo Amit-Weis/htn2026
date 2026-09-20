@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using System.Threading.Tasks;
 
 namespace Forgetmenot
 {
@@ -31,6 +32,7 @@ namespace Forgetmenot
         [Header("Detection")]
         [SerializeField] string targetClass = "hacker_card";
         [SerializeField, Range(0.05f, 1f)] float scoreThreshold = 0.3f;
+        [SerializeField] float distanceConstant = 0.033f;
         [SerializeField, Min(0.05f)] float inferenceIntervalSeconds = 0.2f;
         [Tooltip("Longest edge sent to the model. 640 matches its input size.")]
         [SerializeField, Min(128)] int inferenceMaxEdge = 640;
@@ -53,6 +55,12 @@ namespace Forgetmenot
         [SerializeField] bool logFrames = true;
         [SerializeField, Min(0.1f)] float frameLogIntervalSeconds = 2f;
 
+        [SerializeField] DetectionFrameEvent m_OnDetections = new();
+        public DetectionFrameEvent onDetections => m_OnDetections;
+
+        // next to the other [Header("Detection")] fields
+        //[SerializeField] float distanceConstant = 0f;
+
         WebCamTexture cam;
         AndroidMediaPipeDetector detector;
 
@@ -72,7 +80,9 @@ namespace Forgetmenot
         float lastFov, lastAspect, lastHeightFrac, lastMargin, lastDistance;
         string statusMessage = "Starting...";
         bool running;
-
+        volatile bool inFlight;
+        DetectionFrameResult pendingResult;
+        readonly object resultLock = new object();
         public WebCamTexture CameraTexture => cam;
 
         // ------------------------------------------------------------- startup
@@ -146,7 +156,7 @@ namespace Forgetmenot
 
             try
             {
-                detector = new AndroidMediaPipeDetector(scoreThreshold);
+                detector = new AndroidMediaPipeDetector(scoreThreshold, distanceConstant);
             }
             catch (Exception exception)
             {
@@ -331,14 +341,43 @@ namespace Forgetmenot
 
         // ----------------------------------------------------------- inference
 
+        // ----------------------------------------------------------- inference
+
         void Update()
         {
             if (!running || cam == null || !cam.isPlaying) return;
-            if (Time.unscaledTime < nextInferenceTime) return;
-            nextInferenceTime = Time.unscaledTime + inferenceIntervalSeconds;
 
+            // Drain any finished inference first. This runs every frame, not on the
+            // interval, so a result is consumed the frame after it lands.
+            DetectionFrameResult ready = null;
+            lock (resultLock)
+            {
+                ready = pendingResult;
+                pendingResult = null;
+            }
+
+            if (ready != null)
+            {
+                DrawBoxes(ready);
+                m_OnDetections.Invoke(ready);
+
+                DetectionResult best = ready.detections
+                    .OrderByDescending(item => item.confidence)
+                    .FirstOrDefault();
+
+                SetStatus(best != null
+                ? $"{best.confidence:0.00}  w={best.bbox.Width}/{ready.image_width}  " +
+                  $"d={distanceConstant / Mathf.Max(0.0001f, best.bbox.Width / (float)ready.image_width):0.00} m"
+                : $"Camera OK: {cam.width}x{cam.height}");
+            }
+
+            // Then decide whether to kick off a new one.
+            if (Time.unscaledTime < nextInferenceTime) return;
+            if (inFlight) return;
             if (!cam.didUpdateThisFrame) return;
             if (scaledRt == null || readbackTex == null) return;
+
+            nextInferenceTime = Time.unscaledTime + inferenceIntervalSeconds;
 
             try
             {
@@ -351,30 +390,42 @@ namespace Forgetmenot
                 readbackTex.Apply(false);
                 RenderTexture.active = previous;
 
+                // GetRawTextureData returns a copy, so the worker owns these bytes
+                // and the next frame's readback cannot scribble over them.
                 byte[] rgba = readbackTex.GetRawTextureData();
+                int width = scaledRt.width;
+                int height = scaledRt.height;
 
                 if (logFrames && Time.unscaledTime >= nextFrameLogTime)
                 {
                     nextFrameLogTime = Time.unscaledTime + frameLogIntervalSeconds;
-                    Debug.Log($"[CameraHud] inference frame {scaledRt.width}x{scaledRt.height}", this);
+                    Debug.Log($"[CameraHud] inference frame {width}x{height}", this);
                 }
 
-                DetectionFrameResult result = detector.Detect(
-                    rgba, scaledRt.width, scaledRt.height, targetClass);
-
-                DrawBoxes(result);
-
-                DetectionResult best = result.detections
-                    .OrderByDescending(item => item.confidence)
-                    .FirstOrDefault();
-
-                SetStatus(best != null
-                    ? $"Detected {best.class_name} ({best.confidence:0.00})"
-                    : $"Camera OK: {cam.width}x{cam.height}");
+                inFlight = true;
+                Task.Run(() =>
+                {
+                    // JNI from an unattached thread aborts the process rather than
+                    // throwing, so this attach is mandatory, not defensive.
+                    AndroidJNI.AttachCurrentThread();
+                    try
+                    {
+                        DetectionFrameResult r = detector.Detect(rgba, width, height, targetClass);
+                        lock (resultLock) pendingResult = r;
+                    }
+                    catch (Exception workerException)
+                    {
+                        Debug.LogException(workerException);
+                    }
+                    finally
+                    {
+                        inFlight = false;
+                    }
+                });
             }
             catch (Exception exception)
             {
-                SetStatus($"ERROR: {exception.GetType().Name}");
+                SetStatus($"ERROR: {exception.Message}");
                 Debug.LogException(exception, this);
                 running = false;
             }

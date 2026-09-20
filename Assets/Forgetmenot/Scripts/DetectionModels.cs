@@ -17,6 +17,9 @@ namespace Forgetmenot
         public int y1;
         public int x2;
         public int y2;
+
+        public int Width => x2 - x1;
+        public int Height => y2 - y1;
     }
 
     [Serializable]
@@ -26,6 +29,15 @@ namespace Forgetmenot
         public float confidence;
         public DetectionBox bbox;
         public DetectionPoint center;
+
+        /// <summary>
+        /// Estimated range in metres. Matches distance_m in the Python contract.
+        /// JsonUtility leaves this at 0 when the producer did not send it, so 0
+        /// means "unknown", never "at the camera".
+        /// </summary>
+        public float distance_m;
+
+        public bool HasDistance => distance_m > 0f;
     }
 
     [Serializable]
@@ -46,6 +58,33 @@ namespace Forgetmenot
 
             result.detections ??= Array.Empty<DetectionResult>();
             return result;
+        }
+
+        /// <summary>
+        /// Fills distance_m for any detection that came back without one, using the
+        /// same known-size model as KnownSizeDistanceEstimator on the Python side:
+        ///
+        ///     distance = constant / (boxWidthPx / imageWidthPx)
+        ///
+        /// constant is normalized_width_distance_constant from the calibration JSON.
+        /// Because the width is normalised, this is resolution independent, so the
+        /// downscaled inference frame gives the same answer as the full frame. It is
+        /// NOT FOV independent: recalibrate if you change the camera.
+        /// </summary>
+        public void FillMissingDistances(float normalizedWidthDistanceConstant)
+        {
+            if (normalizedWidthDistanceConstant <= 0f || image_width <= 0)
+                return;
+
+            foreach (DetectionResult detection in detections)
+            {
+                if (detection == null || detection.HasDistance)
+                    continue;
+
+                float normalizedWidth = detection.bbox.Width / (float)image_width;
+                if (normalizedWidth > 0f)
+                    detection.distance_m = normalizedWidthDistanceConstant / normalizedWidth;
+            }
         }
     }
 }

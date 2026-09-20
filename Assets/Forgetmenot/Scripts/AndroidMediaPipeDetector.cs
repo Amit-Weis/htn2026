@@ -9,13 +9,18 @@ namespace Forgetmenot
         readonly AndroidJavaObject m_Plugin;
 #endif
 
-        public AndroidMediaPipeDetector(float scoreThreshold)
+        /// <summary>
+        /// distanceConstant is normalized_width_distance_constant from the size
+        /// calibration. Pass 0 to leave distance_m out of the plugin's JSON, which
+        /// is the old behaviour; LastSeenAnchor can still fill it in on the C# side.
+        /// </summary>
+        public AndroidMediaPipeDetector(float scoreThreshold, float distanceConstant = 0f)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
             using var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
             m_Plugin = new AndroidJavaObject(
-                "com.forgetmenot.cv.MediaPipeDetector", activity, scoreThreshold);
+                "com.forgetmenot.cv.MediaPipeDetector", activity, scoreThreshold, distanceConstant);
 #else
             Debug.Log("MediaPipe object detection is available only in an Android player.");
 #endif
