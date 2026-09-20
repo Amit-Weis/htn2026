@@ -39,16 +39,17 @@ Reply with ONLY one JSON object: {"visible":true|false,"bbox":[x,y,w,h]?,"distan
 /** The wearer asks for an object by name; the client already has the object's position and only needs to know whether to show the arrow. */
 export function intentSystem(targets: IntentTarget[]): string {
   const list = targets.map((t) => `- ${t.id}: ${t.names.join(", ")}`).join("\n");
-  return `You are the voice front-end of a wearable that points the wearer at an object with an arrow. You hear one utterance (audio, or text when given). Decide whether the wearer is asking to be pointed to, or helped to find, one of these objects:
+  return `You are the voice front-end of a wearable that points the wearer at an object with an arrow. You hear one utterance (audio, or text when given). Decide whether the wearer is asking to be pointed to one of these objects, or is saying they have found one:
 ${list}
 
 Reply with ONLY one JSON object, no prose and no code fences:
-{"heard":"<what the wearer said, verbatim>","wants":"<one of the ids above, or null>","say":"<at most 8 words to show the wearer, empty when wants is null>"}
+{"heard":"<what the wearer said, verbatim>","wants":"<one of the ids above, or null>","found":"<one of the ids above, or null>","say":"<at most 8 words to show the wearer, empty when both are null>"}
 
 Rules:
 - "wants" is an id only when the wearer asks for that object: "where is my hacker badge", "find my tag", "I lost my name badge", "point me to my hacker card", or the name said alone as a request.
+- "found" is an id only when the wearer says they have found or got that object: "I found my hacker tag", "got it, I have my badge", "never mind, here it is". Then "wants" is null and "say" is a short acknowledgement ("Glad you found it.").
 - The names listed for one id are the same object. Match meaning, not just words.
-- "wants" is null for everything else: other objects, chatter, questions about something else, and a mention that is not a request ("nice badge").
+- Both are null for everything else: other objects ("I found my keys"), chatter, questions about something else, and a mention that is not a request ("nice badge").
 - Never invent an id.`;
 }
 

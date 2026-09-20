@@ -117,6 +117,12 @@ export async function runHttpSmoke({ url, token, log }: Opts): Promise<boolean> 
   check(at(voiced.json, "wants") === "hacker_card" && at(voiced.json, "heard") === "point me to my hacker badge", "a spoken request is understood", voiced.json);
   const other = await call("POST", "/api/intent", { text: "where are my keys" });
   check(other.status === 200 && at(other.json, "wants") === null, "another object does not trigger the arrow", other.json);
+  for (const say of ["I found my hacker tag", "got my badge"]) {
+    const r = await call("POST", "/api/intent", { text: say });
+    check(r.status === 200 && at(r.json, "found") === "hacker_card" && at(r.json, "wants") === null, `"${say}" says it was found`, r.json);
+  }
+  const foundKeys = await call("POST", "/api/intent", { text: "I found my keys" });
+  check(at(foundKeys.json, "found") === null && at(foundKeys.json, "wants") === null, "finding something else does not hide the arrow", foundKeys.json);
   const idle = await call("POST", "/api/intent", { text: "what a nice hacker badge" });
   check(idle.status === 200 && at(idle.json, "wants") === null, "a mention that is not a request does not trigger it", idle.json);
 

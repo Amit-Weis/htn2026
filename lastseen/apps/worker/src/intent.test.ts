@@ -1,6 +1,6 @@
 import { IntentResultSchema } from "@lastseen/shared";
 import { describe, expect, it } from "vitest";
-import { TARGETS, isKnownTarget, keywordIntent, matchTarget, resolveIntent } from "./intent";
+import { TARGETS, isKnownTarget, keywordFound, keywordIntent, matchTarget, resolveIntent } from "./intent";
 import { parseIntent } from "./httpParse";
 import { BudgetGuard } from "./omni/budget";
 import { HttpOmni } from "./omni/http";
@@ -51,6 +51,40 @@ describe("resolveIntent with the mock", () => {
     expect(yes.wants).toBe("hacker_card");
     const no = await resolveIntent(omni, undefined, { b64: enc({ mockTranscript: "where are my keys" }), mime: "audio/wav" });
     expect(no).toMatchObject({ wants: null, say: "" });
+  });
+});
+
+describe("saying you found it", () => {
+  it.each(["I found my hacker tag", "found my hacker badge", "got my badge", "never mind I have my name tag", "here it is, my hacker badge", "I've got my hacker card"])(
+    "%s means the arrow can go away",
+    (say) => {
+      expect(keywordFound(say)).toBe("hacker_card");
+      expect(keywordIntent(say)).toBeNull(); // never both
+    },
+  );
+
+  it.each(["where is my hacker badge", "have you seen my hacker tag", "can you find my badge", "I found my keys", "nice hacker badge", "I lost my name tag"])(
+    "%s does not",
+    (say) => {
+      expect(keywordFound(say)).toBeNull();
+    },
+  );
+
+  it("is understood through the mock, typed and spoken", async () => {
+    const omni = new MockOmni();
+    expect(await resolveIntent(omni, "I found my hacker tag", null)).toMatchObject({ wants: null, found: "hacker_card", source: "omni" });
+    const spoken = await resolveIntent(omni, undefined, { b64: enc({ mockTranscript: "got my badge" }), mime: "audio/wav" });
+    expect(spoken).toMatchObject({ wants: null, found: "hacker_card" });
+    expect(await resolveIntent(omni, "where is my hacker badge", null)).toMatchObject({ wants: "hacker_card", found: null });
+    expect(await resolveIntent(omni, "I found my keys", null)).toMatchObject({ wants: null, found: null });
+  });
+
+  it("uses OMNI's answer, never sets both, and falls back to the words when OMNI fails", async () => {
+    const both = { understandIntent: async () => ({ value: { heard: "x", wants: "hacker_card", found: "hacker_card", say: "" }, latencyMs: 0, costCad: 0 }) } as unknown as OmniClient;
+    expect(await resolveIntent(both, "x", null)).toMatchObject({ wants: null, found: "hacker_card" });
+    const broken = { understandIntent: () => Promise.reject(new Error("down")) } as unknown as OmniClient;
+    expect(await resolveIntent(broken, "I found my hacker tag", null)).toMatchObject({ wants: null, found: "hacker_card", source: "keywords" });
+    expect(await resolveIntent(broken, "where is my hacker tag", null)).toMatchObject({ wants: "hacker_card", found: null, source: "keywords" });
   });
 });
 

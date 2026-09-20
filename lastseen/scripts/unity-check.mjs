@@ -84,6 +84,9 @@ function scratchProject() {
   for (const p of ["Scripts", "Forgetmenot/Scripts", "Tests"]) {
     if (existsSync(join(project, "Assets", p))) cpSync(join(project, "Assets", p), join(assets, p), { recursive: true, filter: (s) => !s.endsWith(".meta") });
   }
+  // the XREAL SDK is a tarball package the scratch project does not have: compile against a stand-in with the same signatures
+  mkdirSync(join(assets, "Stubs"), { recursive: true });
+  for (const f of readdirSync(join(lastseen, "scripts", "unity-stubs"))) cpSync(join(lastseen, "scripts", "unity-stubs", f), join(assets, "Stubs", f));
   // loose scripts in the Assets root (DistanceReadout, pointer) are part of Assembly-CSharp and referenced by the Forgetmenot scripts
   for (const f of readdirSync(join(project, "Assets"))) if (f.endsWith(".cs")) cpSync(join(project, "Assets", f), join(assets, f));
   const vectors = join("lastseen", "packages", "shared", "test-vectors");

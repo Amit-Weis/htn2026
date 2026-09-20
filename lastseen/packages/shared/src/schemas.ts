@@ -367,6 +367,8 @@ export const IntentResultSchema = z.object({
   heard: z.string().default(""),
   /** id of the target the wearer is asking to be pointed to, or null */
   wants: z.string().nullable().default(null),
+  /** id of the target the wearer says they have FOUND ("I found my hacker tag"): the arrow can go away. Never set together with wants */
+  found: z.string().nullable().default(null),
   /** a short acknowledgement to show or speak */
   say: z.string().default(""),
 });
@@ -376,6 +378,8 @@ export interface HttpIntentReply {
   heard: string;
   /** a known target id (e.g. "hacker_card") when the wearer asked to be pointed to it, else null */
   wants: string | null;
+  /** a known target id when the wearer says they found it (hide the arrow), else null */
+  found: string | null;
   say: string;
   /** "omni" = OMNI decided; "keywords" = OMNI could not answer, so the name + a "find" word in the typed text decided */
   source: "omni" | "keywords";

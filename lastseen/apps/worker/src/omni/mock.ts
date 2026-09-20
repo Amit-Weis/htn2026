@@ -1,6 +1,6 @@
 import { formatAge } from "@lastseen/shared";
 import type { AgentStep, CropDescription, IntentResult, PlacementEvent, PlacementResult, ToolName, VerifyResult } from "@lastseen/shared";
-import { keywordIntent } from "../intent";
+import { keywordFound, keywordIntent } from "../intent";
 import { labelsCompatible } from "../memory/text";
 import type { AudioClip, Frame, IntentTarget, OmniCapabilities, OmniClient, OmniResult, PlacementCtx, UtteranceCtx } from "./types";
 
@@ -149,9 +149,11 @@ export class MockOmni implements OmniClient {
   understandIntent(audio: AudioClip | null, text: string | undefined, targets: IntentTarget[]): Promise<OmniResult<IntentResult>> {
     const scripted = audio ? decodeJson(audio.b64) : null;
     const heard = text ?? (typeof scripted?.mockTranscript === "string" ? scripted.mockTranscript : "");
+    const foundId = keywordFound(heard);
+    if (foundId && targets.some((t) => t.id === foundId)) return this.done({ heard, wants: null, found: foundId, say: "Glad you found it." });
     const id = keywordIntent(heard);
     const target = targets.find((t) => t.id === id);
-    return this.done({ heard, wants: target ? target.id : null, say: target ? `Pointing you to your ${target.names[0]}.` : "" });
+    return this.done({ heard, wants: target ? target.id : null, found: null, say: target ? `Pointing you to your ${target.names[0]}.` : "" });
   }
 
   understandUtterance(audio: AudioClip | null, ctx: UtteranceCtx): Promise<OmniResult<AgentStep>> {
